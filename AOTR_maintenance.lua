@@ -20,12 +20,39 @@ local function findPath(parent, names)
 end
 local localPlayer = game:GetService("Players").LocalPlayer
 assert(localPlayer, "This script requires a local player")
+local cachedBladeSets
+local function readBladeCount(label)
+    if not label then return nil end
+    local current, maximum = label.Text:match("^%s*(%d+)%s*/%s*(%d+)%s*$")
+    if not current then return nil end
+    return tonumber(current), tonumber(maximum)
+end
 local function findBladeSets()
-    local sets = findPath(localPlayer, {"PlayerGui", "Interface", "HUD", "Main", "Top", "Blade", "Sets"})
-    if sets and (sets:IsA("TextLabel") or sets:IsA("TextButton") or sets:IsA("TextBox")) then
-        return sets
+    if cachedBladeSets and cachedBladeSets:IsDescendantOf(localPlayer) then return cachedBladeSets end
+    local direct = findPath(localPlayer, {"PlayerGui", "Interface", "HUD", "Main", "Top", "Blade", "Sets"})
+    local function isLabel(item)
+        return item and (item:IsA("TextLabel") or item:IsA("TextButton") or item:IsA("TextBox"))
     end
-    return nil
+    if isLabel(direct) then cachedBladeSets = direct; return direct end
+    local gui = localPlayer:FindFirstChildOfClass("PlayerGui")
+    if not gui then return nil end
+    local match
+    for _, item in ipairs(gui:GetDescendants()) do
+        if isLabel(item) and item.Name:lower() == "sets" and readBladeCount(item) ~= nil then
+            local parent = item.Parent
+            for _ = 1, 4 do
+                if not parent or parent == gui then break end
+                if parent.Name:lower():find("blade", 1, true) then
+                    if match and match ~= item then return nil end
+                    match = item
+                    break
+                end
+                parent = parent.Parent
+            end
+        end
+    end
+    cachedBladeSets = match
+    return match
 end
 local function v2(v0, v1, duration) --[[ Line: 67 ]] --[[ Name: 25ms ]]
     local ok, _err = pcall(function()
@@ -155,7 +182,7 @@ v3["12"].TextColor3 = Color3.fromRGB(255, 255, 255);
 v3["12"].BackgroundTransparency = 1;
 v3["12"].Size = UDim2.new(0.56802, 0, 0.83558, 0);
 v3["12"].BorderColor3 = Color3.fromRGB(0, 0, 0);
-v3["12"].Text = "Blade Refill";
+v3["12"].Text = "Auto Refill";
 v3["12"].Name = "refillLabel";
 v3["12"].Position = UDim2.new(0.05149, 0, 0.07746, 0);
 v3["13"] = Instance.new("ImageButton", v3["12"]);
@@ -831,10 +858,48 @@ local missionTitans = waitForValue("Titans folder", function()
     return workspace:FindFirstChild("Titans")
 end)
 -- Refill is optional: some maps do not expose this legacy path.
+local function resolveRefill()
+    local root = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not root then return nil end
+    local best, bestDistance
+    local function consider(part, prompt, method)
+        if not part or not part:IsA("BasePart") then return end
+        local distance = (root.Position - part.Position).Magnitude
+        if not bestDistance or distance < bestDistance then
+            bestDistance = distance
+            best = {part = part, prompt = prompt, method = method}
+        end
+    end
+    local legacy = findPath(workspace, {"Unclimbable", "Reloads", "GasTanks", "Refill"})
+    consider(legacy, nil, "legacy")
+    for _, item in ipairs(workspace:GetDescendants()) do
+        if item:IsA("ProximityPrompt") and item.Enabled then
+            local words = (item.Name .. " " .. item.ActionText .. " " .. item.ObjectText):lower()
+            if words:find("refill", 1, true) or words:find("resupply", 1, true)
+                or words:find("restock", 1, true) then
+                local parent = item.Parent
+                if parent and parent:IsA("Attachment") then parent = parent.Parent end
+                if parent and parent:IsA("Model") then parent = parent.PrimaryPart end
+                consider(parent, item, "prompt")
+            end
+        elseif item:IsA("BasePart") and item.Name == "Refill" then
+            local parent = item.Parent
+            for _ = 1, 5 do
+                if not parent or parent == workspace then break end
+                local name = parent.Name:lower()
+                if name == "reload" or name == "reloads" then
+                    consider(item, nil, "legacy")
+                    break
+                end
+                parent = parent.Parent
+            end
+        end
+    end
+    return best
+end
 local function findMissionRefill()
-    local refill = findPath(workspace, {"Unclimbable", "Reloads", "GasTanks", "Refill"})
-    if refill and refill:IsA("BasePart") then return refill end
-    return nil
+    local station = resolveRefill()
+    return station and station.part or nil
 end
 local missionRefill = findMissionRefill()
 local initialCharacter = waitForValue("player character", function()
@@ -910,6 +975,100 @@ local v4 = {
     hovering = false, 
     refill = missionRefill
 };
+
+-- One refill owner pauses movement/attacks until completion or timeout.
+v4.refilling = false
+v4.autoAttack = false
+local refillStatus = Instance.new("TextLabel")
+refillStatus.Size = UDim2.new(0.42, 0, 0, 58)
+refillStatus.Position = UDim2.new(0.02, 0, 0.15, 226)
+refillStatus.BackgroundColor3 = Color3.fromRGB(25, 32, 40)
+refillStatus.TextColor3 = Color3.new(1, 1, 1)
+refillStatus.TextSize = 15
+refillStatus.TextWrapped = true
+refillStatus.Parent = v3["1"]
+local function setRefillStatus(message)
+    if refillStatus.Text == "REFILL: " .. message then return end
+    refillStatus.Text = "REFILL: " .. message
+    print("[Yozakura refill] " .. message)
+end
+setRefillStatus("Idle. Main > Auto Refill enables automatic blade replenishment.")
+local lastRefillAttempt = -math.huge
+local function requestRefill(manual)
+    if v4.refilling then return end
+    if not manual and os.clock() - lastRefillAttempt < 20 then return end
+    lastRefillAttempt = os.clock()
+    v4.refilling = true
+    task.spawn(function()
+        local suspended = {}
+        local root
+        local ok, err = xpcall(function()
+            setRefillStatus("Looking for a refill station...")
+            local station = resolveRefill()
+            if not station then error("No supported refill station is loaded. Move near a refill station and retry.", 0) end
+            local character = localPlayer.Character
+            root = character and character:FindFirstChild("HumanoidRootPart")
+            if not root or not root:IsA("BasePart") then error("Player root is missing.", 0) end
+            local before = readBladeCount(findBladeSets())
+            for _, mover in ipairs(root:GetChildren()) do
+                if mover:IsA("BodyPosition") or mover:IsA("BodyVelocity") then
+                    table.insert(suspended, {item = mover, force = mover.MaxForce})
+                    mover.MaxForce = Vector3.zero
+                end
+            end
+            local destination = station.part.Position + Vector3.new(0, 3, 0)
+            if station.prompt then
+                local host = station.prompt.Parent
+                if host and host:IsA("Attachment") then destination = host.WorldPosition + Vector3.new(0, 2, 0) end
+            end
+            root.CFrame = CFrame.new(destination)
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.AssemblyAngularVelocity = Vector3.zero
+            setRefillStatus("At " .. station.part:GetFullName())
+            task.wait(0.5)
+            local completed, operationError = false, nil
+            task.spawn(function()
+                local callOK, callError = pcall(function()
+                    if station.method == "prompt" then
+                        if type(fireproximityprompt) ~= "function" then
+                            error("Automatic prompt interaction is unavailable; use the station's normal interaction key.", 0)
+                        end
+                        fireproximityprompt(station.prompt, station.prompt.HoldDuration)
+                    else
+                        v4.remoteGet:InvokeServer("Blades", "Full_Reload", "Left", station.part)
+                        v4.remoteGet:InvokeServer("Blades", "Full_Reload", "Right", station.part)
+                    end
+                end)
+                if not callOK then operationError = tostring(callError) end
+                completed = true
+            end)
+            local deadline = os.clock() + 10
+            repeat
+                task.wait(0.25)
+                local count = readBladeCount(findBladeSets())
+                if before ~= nil and count ~= nil and count > before then
+                    setRefillStatus("Blade sets increased: " .. before .. " -> " .. count)
+                    return
+                end
+                if completed and operationError then error(operationError, 0) end
+                if not root.Parent then error("Character changed during refill.", 0) end
+            until os.clock() >= deadline
+            if not completed then error("Refill call did not return within 10 seconds.", 0) end
+            if before == nil then
+                error("Interaction sent; blade-count UI not found, so replenishment is unverified.", 0)
+            end
+            error("Interaction sent, but blade count did not increase.", 0)
+        end, function(message) return tostring(message) end)
+        for _, saved in ipairs(suspended) do
+            if saved.item.Parent then
+                if saved.item:IsA("BodyPosition") and root and root.Parent then saved.item.Position = root.Position end
+                pcall(function() saved.item.MaxForce = saved.force end)
+            end
+        end
+        v4.refilling = false
+        if not ok then setRefillStatus(tostring(err)) end
+    end)
+end
 v3["60"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v2 (ref)
     print((function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
@@ -1247,27 +1406,7 @@ if not v4.napeVisible then
         end;
     end;
 end;
-v4.blade:GetPropertyChangedSignal("Transparency"):Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
-    -- upvalues: v4 (ref)
-    task.wait(0.15);
-    if v4.blade.Transparency == 1 and v4.bladeEnabled and v4.character:GetAttribute("IFrames") == nil then
-        local l_Sets_0 = findBladeSets();
-        if not l_Sets_0 then warn("Blade Sets UI is unavailable"); return end
-        print("Reloaded");
-        if l_Sets_0.Text == "3 / 3" then
-            l_Sets_0.Text = "2 / 3";
-        elseif l_Sets_0.Text == "2 / 3" then
-            l_Sets_0.Text = "1 / 3";
-        elseif l_Sets_0.Text == "1 / 3" then
-            l_Sets_0.Text = "0 / 3";
-        end;
-        local v72 = tick();
-        while tick() - v72 < 30 and v4.blade.Transparency == 1 do
-            task.wait(0.5);
-            v4.remoteGet:InvokeServer("Blades", "Reload");
-        end;
-    end;
-end);
+-- Blade Refill is polled below; HUD text is never modified locally.
 v3["13"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref), v3 (ref)
     v4.bladeEnabled = not v4.bladeEnabled;
@@ -1519,16 +1658,22 @@ v3["2b"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
 end);
 local function v108() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v2 (ref), v4 (ref)
+    if v4.refilling then return end
     v2("Autofarm", "Clearing Mission...");
     local _ = v4.character.Humanoid:GetPlayingAnimationTracks();
     local v107 = tick();
     while tick() - v107 < 3.5 do
+        if v4.refilling then return end
+        if v4.refilling then return end
         v4.remoteGet:InvokeServer("S_Skills", "Usage", "108");
         task.wait(0.1);
+        if v4.refilling then return end
         v4.remoteGet:InvokeServer("S_Skills", "Usage", "14");
         task.wait(2.5);
+        if v4.refilling then return end
         v4.remoteGet:InvokeServer("S_Skills", "Usage", "23");
         task.wait(0.1);
+        if v4.refilling then return end
         v4.remoteGet:InvokeServer("S_Skills", "Usage", "14");
         task.wait(0.5);
     end;
@@ -1575,6 +1720,7 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     v122.D = 1000;
     v122.P = 1000;
     while v4.oldfarmEnabled and task.wait(0.15) do
+        if not v4.refilling then
         coroutine.wrap(v46)();
         local v123 = 75;
         if v4.titans:FindFirstChild("Attack_Titan") then
@@ -1602,24 +1748,13 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
             if l_BG_0 then
                 l_BG_0.CFrame = CFrame.new(v4.root.Position, v4.root.Position + l_Unit_0);
             end;
-            if game:GetService("Workspace"):FindFirstChild("Climbable") then
-                task.wait(3);
-                local climbable = workspace:FindFirstChild("Climbable")
-                if climbable then climbable:Destroy() end
-                local unclimbable = workspace:FindFirstChild("Unclimbable")
-                local mapChildren = unclimbable and unclimbable:GetChildren() or {}
-                for _, v131 in pairs(mapChildren) do
-                    if v131.Name ~= "Reloads" and v131.Name ~= "Cutscene" and v131.Name ~= "Objective" and v131.Name ~= "Reload" then
-                        v131:Destroy();
-                    end;
-                end;
-            end;
             for _, v133 in pairs(v4.character:GetDescendants()) do
                 if v133:IsA("BasePart") and v133.CanCollide == true then
                     v133.CanCollide = false;
                 end;
             end;
         end;
+        end -- refill pause
     end;
 end;
 -- Local diagnostics only: no external reporting.
@@ -1643,7 +1778,7 @@ local function diagShow(stage)
     if target and target:IsA("BasePart") and v4.root and v4.root.Parent then
         distance = string.format("%.1f studs", (v4.root.Position - target.Position).Magnitude)
     end
-    diagPanel.Text = "YOZAKURA DIAGNOSTICS 8\nStage: " .. stage
+    diagPanel.Text = "YOZAKURA DIAGNOSTICS 9\nStage: " .. stage
         .. "\nTarget: " .. (target and target:GetFullName() or "none")
         .. "\nDistance: " .. distance
         .. "\nAttack calls attempted: " .. tostring(diagCount)
@@ -1661,7 +1796,7 @@ teleportButton.Text = "Teleport near titan (12 studs)"
 teleportButton.Parent = v3["1"]
 local teleportBusy = false
 teleportButton.Activated:Connect(function()
-    if teleportBusy then return end
+    if teleportBusy or v4.refilling then return end
     teleportBusy = true
     local ok, err = pcall(function()
         v4.nape = nil
@@ -1710,7 +1845,8 @@ end
 local function v136() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref), v46 (ref)
     local function iteration()
-        local l_Sets_1 = findBladeSets();
+        if v4.refilling then return end
+
         diagShow("Finding target")
         v46();
         task.wait(0.05);
@@ -1729,15 +1865,8 @@ local function v136() --[[ Line: 67 ]] --[[ Name: 25ms ]]
             end;
         end;
         task.wait(0.05);
-        if l_Sets_1 and string.find(l_Sets_1.Text, "0", 1, true) and v4.blade.Transparency == 1 then
-            v4.refill = findMissionRefill()
-            if v4.refill then
-                v4.remoteGet:InvokeServer("Blades", "Full_Reload", "Left", v4.refill);
-                v4.remoteGet:InvokeServer("Blades", "Full_Reload", "Right", v4.refill);
-            end
-        end;
     end
-    while v4.oldfarmEnabled and task.wait(1) do
+    while v4.oldfarmEnabled and task.wait(v4.autoAttack and 0.35 or 1) do
         local ok, err = xpcall(iteration, function(message)
             return tostring(message)
         end)
@@ -1770,27 +1899,57 @@ v3["4a"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         end;
     end;
 end);
-v3["50"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
-    -- upvalues: v4 (ref)
-    v4.refill = findMissionRefill()
-    if not v4.refill then
-        v2("Refill unavailable", "This map does not expose the configured refill station.")
-        return
+v3["50"].Activated:Connect(function()
+    requestRefill(true)
+end)
+local autoAttackButton = Instance.new("TextButton")
+autoAttackButton.Size = UDim2.new(0.42, 0, 0, 34)
+autoAttackButton.Position = UDim2.new(0.02, 0, 0.15, 288)
+autoAttackButton.BackgroundColor3 = Color3.fromRGB(45, 75, 110)
+autoAttackButton.TextColor3 = Color3.new(1, 1, 1)
+autoAttackButton.TextSize = 16
+autoAttackButton.Text = "Auto attack: OFF"
+autoAttackButton.Parent = v3["1"]
+autoAttackButton.Activated:Connect(function()
+    v4.autoAttack = not v4.autoAttack
+    autoAttackButton.Text = v4.autoAttack and "Auto attack: ON (up to 3 swings/sec)" or "Auto attack: OFF"
+end)
+task.spawn(function()
+    while v3["1"].Parent do
+        task.wait(0.35)
+        if v4.autoAttack and not v4.refilling and not v4.oldfarmEnabled then
+            local ok, err = pcall(function()
+                v46()
+                if v4.nape and v4.nape.Parent and (v4.root.Position - v4.nape.Position).Magnitude <= 175 then
+                    v4.remotePost:FireServer("Attacks", "Slash", true)
+                end
+            end)
+            if not ok then
+                v4.autoAttack = false
+                autoAttackButton.Text = "Auto attack stopped: " .. tostring(err)
+            end
+        end
     end
-    local v137 = v4.refill.Position + Vector3.new(0, 2, 0);
-    local v138 = (v137 - v4.root.Position).magnitude / 225;
-    local v139 = TweenInfo.new(v138, Enum.EasingStyle.Linear, Enum.EasingDirection.In);
-    local v140 = {
-        CFrame = CFrame.new(v137)
-    };
-    local v141 = game:GetService("TweenService"):Create(v4.root, v139, v140);
-    v4.hovering = true;
-    v141.Completed:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
-        -- upvalues: v4 (ref)
-        v4.hovering = false;
-    end);
-    v141:Play();
-end);
+end)
+-- A single polling worker avoids duplicate refill jobs.
+task.spawn(function()
+    local lastBladeReload = -math.huge
+    while v3["1"].Parent do
+        task.wait(1)
+        if v4.bladeEnabled and not v4.refilling then
+            local count = readBladeCount(findBladeSets())
+            if count == 0 then
+                requestRefill(false)
+            elseif count and count > 0 and v4.blade.Transparency == 1 and os.clock() - lastBladeReload > 3 then
+                lastBladeReload = os.clock()
+                local ok, err = pcall(function() v4.remoteGet:InvokeServer("Blades", "Reload") end)
+                if not ok then setRefillStatus("Blade reload error: " .. tostring(err)) end
+            elseif count == nil then
+                setRefillStatus("Blade-count UI unavailable. Use Testing > TP To Refill manually.")
+            end
+        end
+    end
+end)
 task.spawn(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref)
     local v142 = getconnections or get_signal_cons;
