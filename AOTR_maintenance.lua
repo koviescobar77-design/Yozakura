@@ -1927,7 +1927,7 @@ local function diagShow(stage)
     if target and target:IsA("BasePart") and v4.root and v4.root.Parent then
         distance = string.format("%.1f studs", (v4.root.Position - target.Position).Magnitude)
     end
-    diagPanel.Text = "YOZAKURA DIAGNOSTICS 20\nStage: " .. stage
+    diagPanel.Text = "YOZAKURA DIAGNOSTICS 21\nStage: " .. stage
         .. "\nTarget: " .. (target and target:GetFullName() or "none")
         .. "\nDistance: " .. distance
         .. "\nAttack calls attempted: " .. tostring(diagCount)
@@ -1991,6 +1991,121 @@ local function diagHit(...)
     diagShow("Attack call returned")
     return result
 end
+
+-- Read-only health observation, separate from requested attack counts.
+local healthPanel = Instance.new("TextLabel")
+healthPanel.Name = "ObservedTitanHealth"
+healthPanel.Size = UDim2.new(0.42, 0, 0, 100)
+healthPanel.Position = UDim2.new(0.55, 0, 0.03, 0)
+healthPanel.BackgroundColor3 = Color3.fromRGB(20, 23, 30)
+healthPanel.TextColor3 = Color3.new(1, 1, 1)
+healthPanel.TextWrapped = true
+healthPanel.TextSize = 16
+healthPanel.Text = "HP TEST: Waiting for an attack target."
+healthPanel.Parent = v3["1"]
+local observedHumanoid, observedStartHP, observedAt, observedDeathAt
+local function observeTarget(humanoid)
+    if observedHumanoid ~= humanoid then
+        observedHumanoid = humanoid
+        observedStartHP = humanoid.Health
+        observedAt = os.clock()
+        observedDeathAt = nil
+    end
+end
+task.spawn(function()
+    while v3["1"].Parent do
+        task.wait(0.1)
+        if observedHumanoid then
+            if observedHumanoid.Parent then
+                local hp = observedHumanoid.Health
+                if hp <= 0 and not observedDeathAt then observedDeathAt = os.clock() end
+                local elapsed = (observedDeathAt or os.clock()) - observedAt
+                healthPanel.Text = string.format(
+                    "HP TEST: %.0f -> %.0f | Net HP drop: %.0f\n%.2fs since first observed attempt | %s\nObserved health only; damage source is unverified.",
+                    observedStartHP, hp, observedStartHP - hp, elapsed,
+                    hp <= 0 and "DEATH OBSERVED" or "ALIVE")
+            elseif not observedDeathAt then
+                healthPanel.Text = "HP TEST: Target removed. Death/time could not be confirmed."
+            end
+        end
+    end
+end)
+local scanButton = Instance.new("TextButton")
+scanButton.Size = UDim2.new(0.42, 0, 0, 36)
+scanButton.Position = UDim2.new(0.02, 0, 0.15, 290)
+scanButton.Text = "Scan refill here (read-only)"
+scanButton.TextSize = 16
+scanButton.BackgroundColor3 = Color3.fromRGB(45, 75, 110)
+scanButton.TextColor3 = Color3.new(1, 1, 1)
+scanButton.Parent = v3["1"]
+local reportFrame = Instance.new("Frame")
+reportFrame.Size = UDim2.fromScale(0.85, 0.72)
+reportFrame.Position = UDim2.fromScale(0.075, 0.14)
+reportFrame.BackgroundColor3 = Color3.fromRGB(20, 23, 30)
+reportFrame.Visible = false
+reportFrame.ZIndex = 20
+reportFrame.Parent = v3["1"]
+local closeReport = Instance.new("TextButton")
+closeReport.Size = UDim2.new(1, 0, 0, 36)
+closeReport.Text = "REFILL REPORT — select/copy text below, or take a screenshot — CLOSE"
+closeReport.TextSize = 16
+closeReport.ZIndex = 21
+closeReport.Parent = reportFrame
+closeReport.Activated:Connect(function() reportFrame.Visible = false end)
+local reportText = Instance.new("TextBox")
+reportText.Size = UDim2.new(1, -16, 1, -44)
+reportText.Position = UDim2.fromOffset(8, 40)
+reportText.MultiLine = true
+reportText.ClearTextOnFocus = false
+reportText.TextEditable = false
+reportText.TextWrapped = true
+reportText.TextSize = 14
+reportText.TextColor3 = Color3.new(1, 1, 1)
+reportText.BackgroundTransparency = 1
+reportText.TextXAlignment = Enum.TextXAlignment.Left
+reportText.TextYAlignment = Enum.TextYAlignment.Top
+reportText.ZIndex = 21
+reportText.Parent = reportFrame
+scanButton.Activated:Connect(function()
+    local lines = {"REFILL SCAN: stand beside the tanks where [R] appears."}
+    local station = resolveRefill()
+    table.insert(lines, station and ("Resolved: " .. station.method .. " | " .. station.part:GetFullName())
+        or "Resolved: NONE")
+    local matches = 0
+    local function add(text)
+        matches = matches + 1
+        if matches <= 16 then table.insert(lines, text) end
+    end
+    local function scan(container)
+        if not container then return end
+        for _, item in ipairs(container:GetDescendants()) do
+            if item:IsDescendantOf(v3["1"]) then
+                -- Exclude our own diagnostics.
+            elseif item:IsA("TextLabel") or item:IsA("TextButton") then
+                if item.Text:lower():find("refill", 1, true) then
+                    local part = refillLabelPart(item)
+                    add("TEXT " .. item:GetFullName() .. " = " .. item.Text
+                        .. " | anchor: " .. (part and part:GetFullName() or "NONE"))
+                end
+            elseif item:IsA("ProximityPrompt") then
+                local parent = item.Parent
+                local part = parent and (parent:IsA("Attachment") and parent.Parent or parent)
+                local root = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if root and part and part:IsA("BasePart") and (root.Position - part.Position).Magnitude < 30 then
+                    add("NEAR PROMPT " .. item:GetFullName() .. " | " .. item.ActionText .. " | " .. item.ObjectText)
+                end
+            end
+        end
+    end
+    scan(workspace)
+    scan(localPlayer:FindFirstChildOfClass("PlayerGui"))
+    if matches == 0 then table.insert(lines, "No refill text or nearby prompt found. Keep the station's [R] label visible and scan again.") end
+    if matches > 16 then table.insert(lines, "Extra matches omitted: " .. tostring(matches - 16)) end
+    reportText.Text = table.concat(lines, "\n")
+    reportFrame.Visible = true
+    print(reportText.Text)
+end)
+
 local nextHitAt = 0
 local function hitBurst(target, maxDistance)
     local sent = 0
@@ -2009,6 +2124,7 @@ local function hitBurst(target, maxDistance)
         end
         if not humanoid or humanoid.Health <= 0 then break end
         if (v4.root.Position - target.Position).Magnitude > maxDistance then break end
+        observeTarget(humanoid)
         nextHitAt = os.clock() + 0.1
         diagHit("Hitboxes", "Register", target, math.random(215, 230), math.random(10, 100))
         sent = sent + 1
