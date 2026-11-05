@@ -1,3 +1,4 @@
+-- Yozakura startup revision 4: menu first, optional refill, bounded dependency checks.
 -- Maintenance revision: static fixes only; live game compatibility unverified.
 if not game:IsLoaded() then game.Loaded:Wait() end
 local function waitForValue(label, getter)
@@ -7,7 +8,7 @@ local function waitForValue(label, getter)
         if ok and value then return value end
         task.wait(0.5)
     until os.clock() >= deadline
-    error("Startup timed out: " .. label .. ". Join a mission and retry.", 0)
+    error("Startup timed out: " .. label .. ". This required object is unavailable in the current session.", 0)
 end
 local function findPath(parent, names)
     local current = parent
@@ -19,37 +20,6 @@ local function findPath(parent, names)
 end
 local localPlayer = game:GetService("Players").LocalPlayer
 assert(localPlayer, "This script requires a local player")
-waitForValue("character Main.W", function()
-    return findPath(localPlayer.Character, {"Main", "W"})
-end)
-local missionTitans = waitForValue("Titans folder", function()
-    return workspace:FindFirstChild("Titans")
-end)
-waitForValue("titan header", function()
-    for _, titan in ipairs(missionTitans:GetChildren()) do
-        if titan:IsA("Model") then
-            local header = findPath(titan, {"Fake", "Head", "Header"})
-            if header then return header end
-        end
-    end
-    return nil
-end)
--- Refill is optional: some maps do not expose this legacy path.
-local function findMissionRefill()
-    local refill = findPath(workspace, {"Unclimbable", "Reloads", "GasTanks", "Refill"})
-    if refill and refill:IsA("BasePart") then return refill end
-    return nil
-end
-local missionRefill = findMissionRefill()
-local initialCharacter = localPlayer.Character
-assert(initialCharacter, "Character disappeared during startup; retry after respawning")
-local remotes = waitForValue("Assets.Remotes", function()
-    return findPath(game:GetService("ReplicatedStorage"), {"Assets", "Remotes"})
-end)
-local remotePost = remotes:WaitForChild("POST", 15)
-local remoteGet = remotes:WaitForChild("GET", 15)
-assert(remotePost and remotePost:IsA("RemoteEvent"), "Missing POST RemoteEvent")
-assert(remoteGet and remoteGet:IsA("RemoteFunction"), "Missing GET RemoteFunction")
 local function findBladeSets()
     local sets = findPath(localPlayer, {"PlayerGui", "Interface", "HUD", "Main", "Top", "Blade", "Sets"})
     if sets and (sets:IsA("TextLabel") or sets:IsA("TextButton") or sets:IsA("TextBox")) then
@@ -66,7 +36,7 @@ local function v2(v0, v1, duration) --[[ Line: 67 ]] --[[ Name: 25ms ]]
     if not ok then warn(tostring(v0) .. ": " .. tostring(v1)) end
 end;
 local v3 = {
-    ["1"] = Instance.new("ScreenGui", game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui"))
+    ["1"] = Instance.new("ScreenGui", game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui", 15))
 };
 v3["1"].DisplayOrder = 999;
 v3["1"].Name = "tekkit";
@@ -753,7 +723,7 @@ v3["6f"].TextColor3 = Color3.fromRGB(255, 255, 255);
 v3["6f"].BackgroundTransparency = 1;
 v3["6f"].Size = UDim2.new(0.95758, 0, 0.88372, 0);
 v3["6f"].BorderColor3 = Color3.fromRGB(0, 0, 0);
-v3["6f"].Text = "Tekkit Hub";
+v3["6f"].Text = "Yozakura";
 v3["6f"].LayoutOrder = 2;
 v3["6f"].Name = "Title";
 v3["6f"].Position = UDim2.new(0.01818, 0, 0.02325, 0);
@@ -856,18 +826,45 @@ task.spawn(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v3 (ref)
     return v3["1"], require;
 end);
+v3["6f"].Text = "Yozakura: checking dependencies"
+local missionTitans = waitForValue("Titans folder", function()
+    return workspace:FindFirstChild("Titans")
+end)
+-- Refill is optional: some maps do not expose this legacy path.
+local function findMissionRefill()
+    local refill = findPath(workspace, {"Unclimbable", "Reloads", "GasTanks", "Refill"})
+    if refill and refill:IsA("BasePart") then return refill end
+    return nil
+end
+local missionRefill = findMissionRefill()
+local initialCharacter = waitForValue("player character", function()
+    return localPlayer.Character
+end)
+local remotes = waitForValue("Assets.Remotes", function()
+    return findPath(game:GetService("ReplicatedStorage"), {"Assets", "Remotes"})
+end)
+local remotePost = remotes:WaitForChild("POST", 15)
+local remoteGet = remotes:WaitForChild("GET", 15)
+assert(remotePost and remotePost:IsA("RemoteEvent"), "Missing POST RemoteEvent")
+assert(remoteGet and remoteGet:IsA("RemoteFunction"), "Missing GET RemoteFunction")
+
+local function requirePath(parent, names)
+    return waitForValue(table.concat(names, "."), function()
+        return findPath(parent, names)
+    end)
+end
 local v4 = {
     player = game:GetService("Players").LocalPlayer, 
     playerName = game:GetService("Players").LocalPlayer.Name, 
     character = initialCharacter, 
-    root = initialCharacter:WaitForChild("HumanoidRootPart"), 
+    root = requirePath(initialCharacter, {"HumanoidRootPart"}), 
     humanoid = initialCharacter:FindFirstChildOfClass("Humanoid"), 
-    blade = initialCharacter:WaitForChild("Rig_" .. game:GetService("Players").LocalPlayer.Name):WaitForChild("LeftHand"):WaitForChild("Blade_1"), 
-    bladebox = initialCharacter:WaitForChild("Main"), 
-    injuryFolder = initialCharacter:WaitForChild("Injuries"), 
-    buttonsFolder = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui"):WaitForChild("Interface"):WaitForChild("Buttons"), 
-    hotbar = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui"):WaitForChild("Interface"):WaitForChild("HUD"):WaitForChild("Main"):WaitForChild("Top"):WaitForChild("Hotbar"), 
-    titans = game:GetService("Workspace"):WaitForChild("Titans"), 
+    blade = requirePath(initialCharacter, {"Rig_" .. localPlayer.Name, "LeftHand", "Blade_1"}), 
+    bladebox = initialCharacter:FindFirstChild("Main"), 
+    injuryFolder = requirePath(initialCharacter, {"Injuries"}), 
+    buttonsFolder = requirePath(localPlayer, {"PlayerGui", "Interface", "Buttons"}), 
+    hotbar = requirePath(localPlayer, {"PlayerGui", "Interface", "HUD", "Main", "Top", "Hotbar"}), 
+    titans = missionTitans, 
     VIM = game:GetService("VirtualInputManager"), 
     UIP = game:GetService("UserInputService"), 
     Mouse = game:GetService("Players").LocalPlayer:GetMouse(), 
@@ -905,8 +902,8 @@ local v4 = {
     cooldownT = nil,
     cooldownS = nil,
     cooldownR = nil,
-    steelGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui"):WaitForChild("Interface"):WaitForChild("HUD"):WaitForChild("Main"):WaitForChild("Top"):WaitForChild("Hotbar"):WaitForChild("Skill_2"), 
-    thrustGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui"):WaitForChild("Interface"):WaitForChild("HUD"):WaitForChild("Main"):WaitForChild("Top"):WaitForChild("Hotbar"):WaitForChild("Skill_1"), 
+
+
     remotePost = remotePost, 
     remoteGet = remoteGet, 
     nape = nil,
@@ -925,6 +922,7 @@ v3["60"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         return v2("Result", "You are safe :)", 5);
     end)());
 end);
+v3["6f"].Text = "Yozakura"
 v4.passed = true;
 local function saveVariables(folder, values)
     if type(writefile) ~= "function" then return end
@@ -1394,7 +1392,8 @@ local function v86() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     task.wait(0.1);
     v4.attacktitan = missionTitans:FindFirstChild("Attack_Titan");
     if v4.attacktitan ~= nil then
-        v4.marker = v4.attacktitan:WaitForChild("Marker");
+        v4.marker = v4.attacktitan:FindFirstChild("Marker");
+        if not v4.marker then return end
         local l_Hitboxes_2 = v4.attacktitan:FindFirstChild("Hitboxes");
         if l_Hitboxes_2 and l_Hitboxes_2:FindFirstChild("Hit") then
             v4.leftleg = l_Hitboxes_2.Hit:FindFirstChild("LeftLeg");
@@ -1554,42 +1553,21 @@ v3["32"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         v2("Premium", "Feature locked, check discord.");
     end;
 end);
-local v109 = {
-    retryButtonTitle = v4.player.PlayerGui.Interface.Rewards.Main.Info.Main.Buttons.Retry.Title, 
-    buttonAreaX = v4.player.PlayerGui.Interface.Rewards.Main.Info.Main.Buttons.Retry.Title.AbsolutePosition.X + v4.player.PlayerGui.Interface.Rewards.Main.Info.Main.Buttons.Retry.Title.AbsoluteSize.X / 2, 
-    buttonAreaYStart = v4.player.PlayerGui.Interface.Rewards.Main.Info.Main.Buttons.Retry.Title.AbsolutePosition.Y - 50, 
-    buttonAreaYEnd = v4.player.PlayerGui.Interface.Rewards.Main.Info.Main.Buttons.Retry.Title.AbsolutePosition.Y - 50 + v4.player.PlayerGui.Interface.Rewards.Main.Info.Main.Buttons.Retry.Title.AbsoluteSize.Y + 100, 
-    numClicks = 10, 
-    clickSpacing = 10, 
-    clickInterval = 1
-};
--- Removed unsolicited Discord execution and reward notifications.
-local function v121() --[[ Line: 67 ]] --[[ Name: 25ms ]]
-    -- upvalues: v109 (ref), v4 (ref)
-    local v119 = false;
-    while task.wait(v109.clickInterval) do
-        if not string.find(v109.retryButtonTitle.Text, "(0/0)", 1, true) then
-            if v4.autofarmEnabled or v4.oldfarmEnabled then
-                v4.remoteGet:InvokeServer("Functions", "Retry", "Add");
-            end;
-            repeat
-                if not string.find(v109.retryButtonTitle.Text, "STARTING") then
-                    task.wait(0.1);
-                    if v4.autofarmEnabled or v4.oldfarmEnabled then
-                        v4.remoteGet:InvokeServer("Functions", "Retry", "Add");
-                    end;
-                else
-                    v119 = true;
-                end;
-            until v119;
-        end;
-        if v119 then
-            break;
-        end;
-    end;
-    v119 = false;
-end;
-coroutine.wrap(v121)();
+local function v121()
+    while v3["1"].Parent do
+        task.wait(1)
+        if v4.autofarmEnabled or v4.oldfarmEnabled then
+            local title = findPath(v4.player, {"PlayerGui", "Interface", "Rewards", "Main", "Info", "Main", "Buttons", "Retry", "Title"})
+            if title and (title:IsA("TextLabel") or title:IsA("TextButton")) then
+                if string.find(title.Text, "STARTING", 1, true) then return end
+                if not string.find(title.Text, "(0/0)", 1, true) then
+                    v4.remoteGet:InvokeServer("Functions", "Retry", "Add")
+                end
+            end
+        end
+    end
+end
+task.spawn(v121)
 local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref), v46 (ref)
     local v122 = v4.root:FindFirstChild("BodyPosition") or Instance.new("BodyPosition", v4.root);
