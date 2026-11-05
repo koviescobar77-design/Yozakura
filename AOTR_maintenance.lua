@@ -1764,7 +1764,7 @@ local function diagShow(stage)
     if target and target:IsA("BasePart") and v4.root and v4.root.Parent then
         distance = string.format("%.1f studs", (v4.root.Position - target.Position).Magnitude)
     end
-    diagPanel.Text = "YOZAKURA DIAGNOSTICS 12\nStage: " .. stage
+    diagPanel.Text = "YOZAKURA DIAGNOSTICS 13\nStage: " .. stage
         .. "\nTarget: " .. (target and target:GetFullName() or "none")
         .. "\nDistance: " .. distance
         .. "\nAttack calls attempted: " .. tostring(diagCount)
@@ -1870,6 +1870,7 @@ local function v136() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     diagShow("Stopped")
 end
 if v4.oldfarmEnabled then
+    v4.autoAttack = true
     v3["4a"].BackgroundColor3 = Color3.new(0, 1, 0);
     coroutine.wrap(v134)();
     coroutine.wrap(v136)();
@@ -1877,6 +1878,8 @@ end;
 v3["4a"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref), v134 (ref), v136 (ref), v3 (ref)
     v4.oldfarmEnabled = not v4.oldfarmEnabled;
+    v4.centerClickFailed = false
+    v4.autoAttack = v4.oldfarmEnabled
     if v4.oldfarmEnabled then
         coroutine.wrap(v134)();
         coroutine.wrap(v136)();
@@ -1888,19 +1891,6 @@ v3["4a"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         end;
     end;
 end);
-local autoAttackButton = Instance.new("TextButton")
-autoAttackButton.Size = UDim2.new(0.42, 0, 0, 34)
-autoAttackButton.Position = UDim2.new(0.02, 0, 0.15, 288)
-autoAttackButton.BackgroundColor3 = Color3.fromRGB(45, 75, 110)
-autoAttackButton.TextColor3 = Color3.new(1, 1, 1)
-autoAttackButton.TextSize = 16
-autoAttackButton.Text = "Center clicks: OFF"
-autoAttackButton.Parent = v3["1"]
-autoAttackButton.Activated:Connect(function()
-    v4.autoAttack = not v4.autoAttack
-    autoAttackButton.Text = v4.autoAttack and "Center clicks: ON (0.1 s)" or "Center clicks: OFF"
-end)
-local clickCount = 0
 local function clickOnce()
     local input = game:GetService("UserInputService")
     if input:GetFocusedTextBox() then return false end
@@ -1921,24 +1911,18 @@ end
 task.spawn(function()
     while v3["1"].Parent do
         local started = os.clock()
-        if v4.autoAttack then
-            if refillBlocksCombat() then
-                autoAttackButton.Text = "Center clicks: paused for refill (0.1 s)"
-            else
-                local ok, clicked = pcall(clickOnce)
-                if not ok then
-                    v4.autoAttack = false
-                    autoAttackButton.Text = "Center input unavailable: " .. tostring(clicked)
-                elseif clicked then
-                    clickCount = clickCount + 1
-                    autoAttackButton.Text = "Center clicks: 0.1 s | clicks: " .. clickCount
-                else
-                    autoAttackButton.Text = "Center clicks: paused over UI / typing"
-                end
+        v4.autoAttack = v4.oldfarmEnabled and not v4.centerClickFailed
+        if v4.autoAttack and not refillBlocksCombat() then
+            local ok, clicked = pcall(clickOnce)
+            if not ok then
+                v4.centerClickFailed = true
+                v4.autoAttack = false
+                v2("Center input unavailable", tostring(clicked), 8)
             end
         end
         task.wait(math.max(0.01, 0.1 - (os.clock() - started)))
     end
+    v4.autoAttack = false
 end)
 -- Event observation triggers at zero; polling reconnects if the HUD changes.
 v4.bladeEnabled = true
