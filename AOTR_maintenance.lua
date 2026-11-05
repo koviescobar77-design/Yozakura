@@ -1084,7 +1084,29 @@ local function requestRefill(manual)
         if not ok then setRefillStatus(tostring(err)) end
     end)
 end
+local function guiIsShown(object)
+    if not object then return false end
+    local node = object
+    while node and node ~= localPlayer do
+        if node:IsA("GuiObject") and not node.Visible then return false end
+        if node:IsA("LayerCollector") and not node.Enabled then return false end
+        node = node.Parent
+    end
+    return node == localPlayer
+end
+local function missionResults()
+    local rewards = findPath(localPlayer, {"PlayerGui", "Interface", "Rewards"})
+    local main = rewards and rewards:FindFirstChild("Main")
+    if not main or not guiIsShown(main) then return false, nil end
+    local retry = findPath(main, {"Info", "Main", "Buttons", "Retry"})
+    local title = retry and retry:FindFirstChild("Title")
+    if title and (title:IsA("TextLabel") or title:IsA("TextButton")) and guiIsShown(title) then
+        return true, title.Text
+    end
+    return true, nil
+end
 local function refillBlocksCombat()
+    if missionResults() then return true end
     if v4.refilling then return true end
     if v4.bladeEnabled and readBladeCount(findBladeSets()) == 0 then
         requestRefill(false)
@@ -1344,8 +1366,8 @@ local function stopAutoFarm(message)
     v4.farmCollisions = {}
     if message then v2("Autofarm stopped", message, 6) end
 end
-local function requestMissionRetry()
-    v2("Mission retry", "Five minutes elapsed. Sending mission retry request.", 8)
+local function requestMissionRetry(reason)
+    v2("Mission retry", reason or "Sending mission retry request.", 8)
     task.spawn(function()
         local finished = false
         task.delay(10, function()
@@ -1364,14 +1386,37 @@ local function requestMissionRetry()
         end
     end)
 end
+local resultsHandled = false
+local resultsRetryPending = false
 task.spawn(function()
     while v3["1"].Parent do
-        task.wait(0.2)
-        if v4.oldfarmEnabled or v4.autofarmEnabled then
+        task.wait(0.1)
+        local shown, retryText = missionResults()
+        if shown then
+            if v4.oldfarmEnabled or v4.autofarmEnabled then
+                resultsRetryPending = not resultsHandled
+                stopAutoFarm("Mission results opened.")
+            end
+            if resultsRetryPending and retryText then
+                local text = retryText:upper()
+                if text:find("STARTING", 1, true) then
+                    resultsHandled = true
+                    resultsRetryPending = false
+                elseif text:find("RETRY", 1, true) and not text:find("(0/0)", 1, true) then
+                    resultsHandled = true
+                    resultsRetryPending = false
+                    requestMissionRetry("Mission results opened. Submitting Retry once.")
+                end
+            end
+        else
+            resultsHandled = false
+            resultsRetryPending = false
+        end
+        if not shown and (v4.oldfarmEnabled or v4.autofarmEnabled) then
             v4.farmDeadline = v4.farmDeadline or (os.clock() + 300)
             if os.clock() >= v4.farmDeadline then
                 stopAutoFarm("Five-minute session finished.")
-                requestMissionRetry()
+                requestMissionRetry("Five minutes elapsed. Sending mission retry request.")
             elseif hasLivingTitans() then
                 v4.noTitanSince = nil
             elseif not v4.noTitanSince then
@@ -1882,7 +1927,7 @@ local function diagShow(stage)
     if target and target:IsA("BasePart") and v4.root and v4.root.Parent then
         distance = string.format("%.1f studs", (v4.root.Position - target.Position).Magnitude)
     end
-    diagPanel.Text = "YOZAKURA DIAGNOSTICS 17\nStage: " .. stage
+    diagPanel.Text = "YOZAKURA DIAGNOSTICS 18\nStage: " .. stage
         .. "\nTarget: " .. (target and target:GetFullName() or "none")
         .. "\nDistance: " .. distance
         .. "\nAttack calls attempted: " .. tostring(diagCount)
