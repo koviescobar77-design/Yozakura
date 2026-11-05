@@ -551,43 +551,6 @@ v3["4c"] = Instance.new("UICorner", v3["48"]);
 v3["4d"] = Instance.new("UIStroke", v3["48"]);
 v3["4d"].Thickness = 2;
 v3["4d"].Color = Color3.fromRGB(255, 255, 255);
-v3["4e"] = Instance.new("Frame", v3["43"]);
-v3["4e"].BorderSizePixel = 0;
-v3["4e"].BackgroundColor3 = Color3.fromRGB(255, 255, 255);
-v3["4e"].Size = UDim2.new(0.38248, 0, 0.15262, 0);
-v3["4e"].Position = UDim2.new(0.50678, 0, 0.06635, 0);
-v3["4e"].BorderColor3 = Color3.fromRGB(0, 0, 0);
-v3["4e"].Name = "tp";
-v3["4e"].BackgroundTransparency = 1;
-v3["4f"] = Instance.new("TextLabel", v3["4e"]);
-v3["4f"].TextWrapped = true;
-v3["4f"].TextStrokeTransparency = 0;
-v3["4f"].BorderSizePixel = 0;
-v3["4f"].BackgroundColor3 = Color3.fromRGB(255, 255, 255);
-v3["4f"].TextSize = 22;
-v3["4f"].TextScaled = true;
-v3["4f"].FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal);
-v3["4f"].TextColor3 = Color3.fromRGB(255, 255, 255);
-v3["4f"].BackgroundTransparency = 1;
-v3["4f"].Size = UDim2.new(0.56702, 0, 0.8005, 0);
-v3["4f"].BorderColor3 = Color3.fromRGB(0, 0, 0);
-v3["4f"].Text = "TP To Refill";
-v3["4f"].Name = "tpLabel";
-v3["4f"].Position = UDim2.new(-5.8E-4, 0, 0.08696, 0);
-v3["50"] = Instance.new("ImageButton", v3["4f"]);
-v3["50"].BorderSizePixel = 0;
-v3["50"].ImageTransparency = 1;
-v3["50"].BackgroundColor3 = Color3.fromRGB(171, 0, 0);
-v3["50"].Image = "rbxasset://textures/ui/GuiImagePlaceholder.png";
-v3["50"].Size = UDim2.new(0.32461, 0, 0.98326, 0);
-v3["50"].Name = "tpButton";
-v3["50"].BorderColor3 = Color3.fromRGB(0, 0, 0);
-v3["50"].Position = UDim2.new(1.32586, 0, 0, 0);
-v3["51"] = Instance.new("UICorner", v3["50"]);
-v3["52"] = Instance.new("UICorner", v3["4e"]);
-v3["53"] = Instance.new("UIStroke", v3["4e"]);
-v3["53"].Thickness = 2;
-v3["53"].Color = Color3.fromRGB(255, 255, 255);
 v3["54"] = Instance.new("UIStroke", v3["2"]);
 v3["54"].Name = "stroke";
 v3["54"].Thickness = 2;
@@ -996,7 +959,7 @@ setRefillStatus("Idle. Main > Auto Refill enables automatic blade replenishment.
 local lastRefillAttempt = -math.huge
 local function requestRefill(manual)
     if v4.refilling then return end
-    if not manual and os.clock() - lastRefillAttempt < 20 then return end
+    if not manual and os.clock() - lastRefillAttempt < 5 then return end
     lastRefillAttempt = os.clock()
     v4.refilling = true
     task.spawn(function()
@@ -1030,13 +993,16 @@ local function requestRefill(manual)
             setRefillStatus("At " .. station.part:GetFullName())
             task.wait(0.5)
             local completed, operationError = false, nil
-            task.spawn(function()
+            local interactionThread = task.spawn(function()
                 local callOK, callError = pcall(function()
                     if station.method == "prompt" then
-                        if type(fireproximityprompt) ~= "function" then
-                            error("Automatic prompt interaction is unavailable; use the station's normal interaction key.", 0)
+                        if type(fireproximityprompt) == "function" then
+                            fireproximityprompt(station.prompt, station.prompt.HoldDuration)
+                        else
+                            station.prompt:InputHoldBegin()
+                            task.wait(station.prompt.HoldDuration + 0.1)
+                            station.prompt:InputHoldEnd()
                         end
-                        fireproximityprompt(station.prompt, station.prompt.HoldDuration)
                     else
                         v4.remoteGet:InvokeServer("Blades", "Full_Reload", "Left", station.part)
                         v4.remoteGet:InvokeServer("Blades", "Full_Reload", "Right", station.part)
@@ -1045,7 +1011,7 @@ local function requestRefill(manual)
                 if not callOK then operationError = tostring(callError) end
                 completed = true
             end)
-            local deadline = os.clock() + 10
+            local deadline = os.clock() + math.max(10, (station.prompt and station.prompt.HoldDuration or 0) + 3)
             repeat
                 task.wait(0.25)
                 local count = readBladeCount(findBladeSets())
@@ -1062,7 +1028,10 @@ local function requestRefill(manual)
                 if completed and operationError then error(operationError, 0) end
                 if not root.Parent then error("Character changed during refill.", 0) end
             until os.clock() >= deadline
-            if not completed then error("Refill call did not return within 10 seconds.", 0) end
+            if not completed then
+                if type(task.cancel) == "function" then pcall(task.cancel, interactionThread) end
+                error("Refill interaction timed out; combat stays paused while supplies are empty.", 0)
+            end
             if before == nil then
                 error("Interaction sent; blade-count UI not found, so replenishment is unverified.", 0)
             end
@@ -1077,6 +1046,14 @@ local function requestRefill(manual)
         v4.refilling = false
         if not ok then setRefillStatus(tostring(err)) end
     end)
+end
+local function refillBlocksCombat()
+    if v4.refilling then return true end
+    if v4.bladeEnabled and readBladeCount(findBladeSets()) == 0 then
+        requestRefill(false)
+        return true
+    end
+    return false
 end
 v3["60"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v2 (ref)
@@ -1667,22 +1644,22 @@ v3["2b"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
 end);
 local function v108() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v2 (ref), v4 (ref)
-    if v4.refilling then return end
+    if refillBlocksCombat() then return end
     v2("Autofarm", "Clearing Mission...");
     local _ = v4.character.Humanoid:GetPlayingAnimationTracks();
     local v107 = tick();
     while tick() - v107 < 3.5 do
-        if v4.refilling then return end
-        if v4.refilling then return end
+        if refillBlocksCombat() then return end
+        if refillBlocksCombat() then return end
         v4.remoteGet:InvokeServer("S_Skills", "Usage", "108");
         task.wait(0.1);
-        if v4.refilling then return end
+        if refillBlocksCombat() then return end
         v4.remoteGet:InvokeServer("S_Skills", "Usage", "14");
         task.wait(2.5);
-        if v4.refilling then return end
+        if refillBlocksCombat() then return end
         v4.remoteGet:InvokeServer("S_Skills", "Usage", "23");
         task.wait(0.1);
-        if v4.refilling then return end
+        if refillBlocksCombat() then return end
         v4.remoteGet:InvokeServer("S_Skills", "Usage", "14");
         task.wait(0.5);
     end;
@@ -1729,7 +1706,7 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     v122.D = 1000;
     v122.P = 1000;
     while v4.oldfarmEnabled and task.wait(0.15) do
-        if not v4.refilling then
+        if not refillBlocksCombat() then
         coroutine.wrap(v46)();
         local v123 = 75;
         if v4.titans:FindFirstChild("Attack_Titan") then
@@ -1787,7 +1764,7 @@ local function diagShow(stage)
     if target and target:IsA("BasePart") and v4.root and v4.root.Parent then
         distance = string.format("%.1f studs", (v4.root.Position - target.Position).Magnitude)
     end
-    diagPanel.Text = "YOZAKURA DIAGNOSTICS 10\nStage: " .. stage
+    diagPanel.Text = "YOZAKURA DIAGNOSTICS 11\nStage: " .. stage
         .. "\nTarget: " .. (target and target:GetFullName() or "none")
         .. "\nDistance: " .. distance
         .. "\nAttack calls attempted: " .. tostring(diagCount)
@@ -1805,7 +1782,7 @@ teleportButton.Text = "Teleport near titan (12 studs)"
 teleportButton.Parent = v3["1"]
 local teleportBusy = false
 teleportButton.Activated:Connect(function()
-    if teleportBusy or v4.refilling then return end
+    if teleportBusy or refillBlocksCombat() then return end
     teleportBusy = true
     local ok, err = pcall(function()
         v4.nape = nil
@@ -1854,7 +1831,7 @@ end
 local function v136() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref), v46 (ref)
     local function iteration()
-        if v4.refilling then return end
+        if refillBlocksCombat() then return end
 
         diagShow("Finding target")
         v46();
@@ -1864,12 +1841,12 @@ local function v136() --[[ Line: 67 ]] --[[ Name: 25ms ]]
             if missionTitans:FindFirstChild("Attack_Titan") then
                 if (v4.root.Position - v4.nape.Position).Magnitude <= 250 then
                     diagShow("Sending slash request");
-                    v4.remotePost:FireServer("Attacks", "Slash", true);
+                    if not v4.autoAttack then v4.remotePost:FireServer("Attacks", "Slash", true) end;
                     diagHit("Hitboxes", "Register", v4.nape, math.random(215, 230), math.random(10, 100));
                 end;
             elseif (v4.root.Position - v4.nape.Position).Magnitude <= 175 then
                 diagShow("Sending slash request");
-                    v4.remotePost:FireServer("Attacks", "Slash", true);
+                    if not v4.autoAttack then v4.remotePost:FireServer("Attacks", "Slash", true) end;
                 diagHit("Hitboxes", "Register", v4.nape, math.random(215, 230), math.random(10, 100));
             end;
         end;
@@ -1911,36 +1888,59 @@ v3["4a"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         end;
     end;
 end);
-v3["50"].Activated:Connect(function()
-    requestRefill(true)
-end)
 local autoAttackButton = Instance.new("TextButton")
 autoAttackButton.Size = UDim2.new(0.42, 0, 0, 34)
 autoAttackButton.Position = UDim2.new(0.02, 0, 0.15, 288)
 autoAttackButton.BackgroundColor3 = Color3.fromRGB(45, 75, 110)
 autoAttackButton.TextColor3 = Color3.new(1, 1, 1)
 autoAttackButton.TextSize = 16
-autoAttackButton.Text = "Auto attack: OFF"
+autoAttackButton.Text = "Auto clicker: OFF"
 autoAttackButton.Parent = v3["1"]
 autoAttackButton.Activated:Connect(function()
     v4.autoAttack = not v4.autoAttack
-    autoAttackButton.Text = v4.autoAttack and "Auto attack: ON (100 ms target interval)" or "Auto attack: OFF"
+    autoAttackButton.Text = v4.autoAttack and "Auto clicker: ON (0.1 s)" or "Auto clicker: OFF"
 end)
+local clickCount = 0
+local function clickOnce()
+    local input = game:GetService("UserInputService")
+    if input:GetFocusedTextBox() then return false end
+    local position = input:GetMouseLocation()
+    local gui = localPlayer:FindFirstChildOfClass("PlayerGui")
+    if gui then
+        for _, object in ipairs(gui:GetGuiObjectsAtPosition(position.X, position.Y)) do
+            if object:IsA("GuiButton") or object:IsA("TextBox") then return false end
+        end
+    end
+    if type(mouse1click) == "function" then
+        mouse1click()
+    else
+        local vim = game:GetService("VirtualInputManager")
+        vim:SendMouseButtonEvent(position.X, position.Y, 0, true, game, 0)
+        -- A paired release prevents a held attack if the loop is later stopped.
+        vim:SendMouseButtonEvent(position.X, position.Y, 0, false, game, 0)
+    end
+    return true
+end
 task.spawn(function()
     while v3["1"].Parent do
-        task.wait(0.1)
-        if v4.autoAttack and not v4.refilling and not v4.oldfarmEnabled then
-            local ok, err = pcall(function()
-                v46()
-                if v4.nape and v4.nape.Parent and (v4.root.Position - v4.nape.Position).Magnitude <= 175 then
-                    v4.remotePost:FireServer("Attacks", "Slash", true)
+        local started = os.clock()
+        if v4.autoAttack then
+            if refillBlocksCombat() then
+                autoAttackButton.Text = "Auto clicker: paused for refill (0.1 s)"
+            else
+                local ok, clicked = pcall(clickOnce)
+                if not ok then
+                    v4.autoAttack = false
+                    autoAttackButton.Text = "Clicker unavailable: " .. tostring(clicked)
+                elseif clicked then
+                    clickCount = clickCount + 1
+                    autoAttackButton.Text = "Auto clicker: 0.1 s | clicks: " .. clickCount
+                else
+                    autoAttackButton.Text = "Auto clicker: paused over UI / typing"
                 end
-            end)
-            if not ok then
-                v4.autoAttack = false
-                autoAttackButton.Text = "Auto attack stopped: " .. tostring(err)
             end
         end
+        task.wait(math.max(0.01, 0.1 - (os.clock() - started)))
     end
 end)
 -- Event observation triggers at zero; polling reconnects if the HUD changes.
@@ -1955,6 +1955,7 @@ local function checkEmptyBlades()
 end
 task.spawn(function()
     local lastBladeReload = -math.huge
+    local reloadInFlight = false
     while v3["1"].Parent do
         local label = findBladeSets()
         if label ~= observedBladeLabel then
@@ -1967,12 +1968,27 @@ task.spawn(function()
             local count, maximum = readBladeCount(label)
             if count == 0 then
                 requestRefill(false)
-            elseif count and count > 0 and v4.blade.Transparency == 1 and os.clock() - lastBladeReload > 3 then
+            elseif count and count > 0 and v4.blade.Transparency == 1 and not reloadInFlight and os.clock() - lastBladeReload > 3 then
                 lastBladeReload = os.clock()
-                local ok, err = pcall(function() v4.remoteGet:InvokeServer("Blades", "Reload") end)
-                if not ok then setRefillStatus("Blade reload error: " .. tostring(err)) end
+                reloadInFlight = true
+                local reloadThread = task.spawn(function()
+                    local ok, err = pcall(function()
+                        if not refillBlocksCombat() then v4.remoteGet:InvokeServer("Blades", "Reload") end
+                    end)
+                    reloadInFlight = false
+                    if not ok then setRefillStatus("Blade reload error: " .. tostring(err)) end
+                end)
+                task.delay(5, function()
+                    if reloadInFlight and os.clock() - lastBladeReload >= 5 then
+                        if type(task.cancel) == "function" then
+                            pcall(task.cancel, reloadThread)
+                            reloadInFlight = false
+                        end
+                        setRefillStatus("Blade reload response timed out; supply monitoring remains active.")
+                    end
+                end)
             elseif count == nil then
-                setRefillStatus("Blade-count UI unavailable. Use Testing > TP To Refill manually.")
+                setRefillStatus("Blade-count UI unavailable; automatic empty detection cannot run.")
             elseif os.clock() - lastRefillAttempt > 12 then
                 setRefillStatus("Watching " .. count .. "/" .. maximum .. "; automatic station trip at 0. No distance cap.")
             end
