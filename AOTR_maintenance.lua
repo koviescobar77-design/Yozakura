@@ -1587,7 +1587,11 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
             end;
             local l_BG_0 = v4.root:FindFirstChild("BG");
             local v126 = v4.nape.Position + Vector3.new(0, v123, 0);
-            local l_Unit_0 = (v126 - v4.root.Position).Unit;
+            if v4.nearTarget then
+                v126 = (v4.nape.CFrame * CFrame.new(0, 0, 12)).Position
+            end
+            local delta = v126 - v4.root.Position
+            local l_Unit_0 = delta.Magnitude > 0.01 and delta.Unit or v4.root.CFrame.LookVector;
             local l_Magnitude_2 = (v126 - v4.root.Position).Magnitude;
             local v129 = math.min(l_Magnitude_2, 150);
             if l_BV_0 then
@@ -1639,13 +1643,57 @@ local function diagShow(stage)
     if target and target:IsA("BasePart") and v4.root and v4.root.Parent then
         distance = string.format("%.1f studs", (v4.root.Position - target.Position).Magnitude)
     end
-    diagPanel.Text = "YOZAKURA DIAGNOSTICS 7\nStage: " .. stage
+    diagPanel.Text = "YOZAKURA DIAGNOSTICS 8\nStage: " .. stage
         .. "\nTarget: " .. (target and target:GetFullName() or "none")
         .. "\nDistance: " .. distance
         .. "\nAttack calls attempted: " .. tostring(diagCount)
         .. "\n" .. diagDetail
 end
 diagShow("Idle")
+local teleportButton = Instance.new("TextButton")
+teleportButton.Name = "TeleportNearTitan"
+teleportButton.Size = UDim2.new(0.42, 0, 0, 36)
+teleportButton.Position = UDim2.new(0.02, 0, 0.15, 186)
+teleportButton.BackgroundColor3 = Color3.fromRGB(45, 75, 110)
+teleportButton.TextColor3 = Color3.new(1, 1, 1)
+teleportButton.TextSize = 16
+teleportButton.Text = "Teleport near titan (12 studs)"
+teleportButton.Parent = v3["1"]
+local teleportBusy = false
+teleportButton.Activated:Connect(function()
+    if teleportBusy then return end
+    teleportBusy = true
+    local ok, err = pcall(function()
+        v4.nape = nil
+        v46()
+        local target = v4.nape
+        local character = localPlayer.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        if not target or not target:IsA("BasePart") or not target:IsDescendantOf(workspace) then
+            error("No available titan nape was found.", 0)
+        end
+        if not root or not root:IsA("BasePart") then
+            error("Player root is unavailable.", 0)
+        end
+        local destination = (target.CFrame * CFrame.new(0, 0, 12)).Position
+        v4.nearTarget = true
+        root.CFrame = CFrame.lookAt(destination, target.Position)
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+        local hover = root:FindFirstChild("BodyPosition")
+        if hover and hover:IsA("BodyPosition") then hover.Position = destination end
+        local velocity = root:FindFirstChild("BV")
+        if velocity and velocity:IsA("BodyVelocity") then velocity.Velocity = Vector3.zero end
+        diagDetail = "Requested teleport 12 studs from nape; VIP movement now follows this near offset."
+        diagShow("Teleport requested")
+    end)
+    if not ok then
+        diagDetail = "Teleport error: " .. tostring(err)
+        diagShow("Teleport failed")
+    end
+    teleportBusy = false
+end)
+
 local function diagHit(...)
     diagCount = diagCount + 1
     diagShow("Waiting for attack call to return")
