@@ -1206,10 +1206,11 @@ v4.UIP.InputEnded:Connect(function(v36) --[[ Line: 67 ]] --[[ Name: 25ms ]]
 end);
 local function v46() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref)
+    v4.nape = nil
     local l_huge_0 = math.huge;
     if v4.titans then
         for _, v39 in ipairs(v4.titans:GetChildren()) do
-            if v39:IsA("Model") and v39:FindFirstChildOfClass("Humanoid") and v4.titans:FindFirstChild("Attack_Titan") == nil then
+            if v39:IsA("Model") and v39:FindFirstChildOfClass("Humanoid") and v39:FindFirstChildOfClass("Humanoid").Health > 0 and v4.titans:FindFirstChild("Attack_Titan") == nil then
                 local l_Hitboxes_0 = v39:FindFirstChild("Hitboxes");
                 if l_Hitboxes_0 then
                     local l_Hit_0 = l_Hitboxes_0:FindFirstChild("Hit");
@@ -1224,7 +1225,7 @@ local function v46() --[[ Line: 67 ]] --[[ Name: 25ms ]]
                         end;
                     end;
                 end;
-            elseif v39.Name == "Attack_Titan" and v39:FindFirstChildOfClass("Humanoid") then
+            elseif v39.Name == "Attack_Titan" and v39:FindFirstChildOfClass("Humanoid") and v39:FindFirstChildOfClass("Humanoid").Health > 0 then
                 local l_Hitboxes_1 = v39:FindFirstChild("Hitboxes");
                 if l_Hitboxes_1 and l_Hitboxes_1:FindFirstChild("Hit") then
                     task.wait(0.1);
@@ -1263,6 +1264,65 @@ local function v46() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         warn("Titans folder not found in Workspace.");
     end;
 end;
+local function hasLivingTitans()
+    if not v4.titans or not v4.titans.Parent then return true end
+    for _, titan in ipairs(v4.titans:GetChildren()) do
+        if titan:IsA("Model") then
+            local humanoid = titan:FindFirstChildOfClass("Humanoid")
+            if not humanoid or humanoid.Health > 0 then return true end
+        end
+    end
+    return false
+end
+local function stopAutoFarm(message)
+    v4.oldfarmEnabled = false
+    v4.autofarmEnabled = false
+    v4.autoAttack = false
+    v4.nape = nil
+    v4.noTitanSince = nil
+    v3["4a"].BackgroundColor3 = Color3.new(1, 0, 0)
+    v3["32"].BackgroundColor3 = Color3.new(1, 0, 0)
+    if v4.farmHover and v4.farmHover.Parent then
+        if v4.ownsFarmHover then
+            v4.farmHover:Destroy()
+        elseif v4.savedFarmHover then
+            v4.farmHover.MaxForce = v4.savedFarmHover.force
+            v4.farmHover.D = v4.savedFarmHover.d
+            v4.farmHover.P = v4.savedFarmHover.p
+        end
+    end
+    v4.farmHover = nil
+    if v4.root and v4.root.Parent then
+        local velocity = v4.root:FindFirstChild("BV")
+        if velocity and velocity:IsA("BodyVelocity") then
+            velocity.Velocity = Vector3.zero
+            if v4.savedFarmForce then velocity.MaxForce = v4.savedFarmForce end
+        end
+        v4.root.AssemblyLinearVelocity = Vector3.zero
+    end
+    for part, original in pairs(v4.farmCollisions or {}) do
+        if part.Parent then part.CanCollide = original end
+    end
+    v4.farmCollisions = {}
+    if message then v2("Autofarm stopped", message, 6) end
+end
+task.spawn(function()
+    while v3["1"].Parent do
+        task.wait(0.2)
+        if v4.oldfarmEnabled or v4.autofarmEnabled then
+            if hasLivingTitans() then
+                v4.noTitanSince = nil
+            else
+                v4.noTitanSince = v4.noTitanSince or os.clock()
+                if os.clock() - v4.noTitanSince >= 2 then
+                    stopAutoFarm("No living titans remain. Enable autofarm again for a new wave.")
+                end
+            end
+        else
+            v4.noTitanSince = nil
+        end
+    end
+end)
 local function v54() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref), v3 (ref)
     if v4.espEnabled then
@@ -1644,22 +1704,22 @@ v3["2b"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
 end);
 local function v108() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v2 (ref), v4 (ref)
-    if refillBlocksCombat() then return end
+    if not v4.autofarmEnabled or refillBlocksCombat() then return end
     v2("Autofarm", "Clearing Mission...");
     local _ = v4.character.Humanoid:GetPlayingAnimationTracks();
     local v107 = tick();
     while tick() - v107 < 3.5 do
-        if refillBlocksCombat() then return end
-        if refillBlocksCombat() then return end
+        if not v4.autofarmEnabled or refillBlocksCombat() then return end
+        if not v4.autofarmEnabled or refillBlocksCombat() then return end
         v4.remoteGet:InvokeServer("S_Skills", "Usage", "108");
         task.wait(0.1);
-        if refillBlocksCombat() then return end
+        if not v4.autofarmEnabled or refillBlocksCombat() then return end
         v4.remoteGet:InvokeServer("S_Skills", "Usage", "14");
         task.wait(2.5);
-        if refillBlocksCombat() then return end
+        if not v4.autofarmEnabled or refillBlocksCombat() then return end
         v4.remoteGet:InvokeServer("S_Skills", "Usage", "23");
         task.wait(0.1);
-        if refillBlocksCombat() then return end
+        if not v4.autofarmEnabled or refillBlocksCombat() then return end
         v4.remoteGet:InvokeServer("S_Skills", "Usage", "14");
         task.wait(0.5);
     end;
@@ -1701,11 +1761,19 @@ end
 task.spawn(v121)
 local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref), v46 (ref)
-    local v122 = v4.root:FindFirstChild("BodyPosition") or Instance.new("BodyPosition", v4.root);
+    local existingHover = v4.root:FindFirstChild("BodyPosition")
+    local v122 = existingHover or Instance.new("BodyPosition", v4.root)
+    v4.farmHover = v122
+    v4.ownsFarmHover = existingHover == nil
+    v4.savedFarmHover = {force = v122.MaxForce, d = v122.D, p = v122.P}
+    v4.farmCollisions = v4.farmCollisions or {}
+    local existingVelocity = v4.root:FindFirstChild("BV")
+    if existingVelocity and existingVelocity:IsA("BodyVelocity") then v4.savedFarmForce = existingVelocity.MaxForce end
     v122.MaxForce = Vector3.new(0, 1000, 0);
     v122.D = 1000;
     v122.P = 1000;
-    while v4.oldfarmEnabled and task.wait(0.15) do
+    while v4.oldfarmEnabled and task.wait(0.05) do
+        if not v4.oldfarmEnabled then break end
         if not refillBlocksCombat() then
         coroutine.wrap(v46)();
         local v123 = 75;
@@ -1725,7 +1793,7 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
             local delta = v126 - v4.root.Position
             local l_Unit_0 = delta.Magnitude > 0.01 and delta.Unit or v4.root.CFrame.LookVector;
             local l_Magnitude_2 = (v126 - v4.root.Position).Magnitude;
-            local v129 = math.min(l_Magnitude_2, 150);
+            local v129 = math.min(l_Magnitude_2 * 3, 225);
             if l_BV_0 then
                 l_BV_0.MaxForce = Vector3.new(5500, 5500, 5500);
                 l_BV_0.Velocity = l_Unit_0 * v129;
@@ -1736,9 +1804,13 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
             end;
             for _, v133 in pairs(v4.character:GetDescendants()) do
                 if v133:IsA("BasePart") and v133.CanCollide == true then
+                    if v4.farmCollisions[v133] == nil then v4.farmCollisions[v133] = v133.CanCollide end
                     v133.CanCollide = false;
                 end;
             end;
+        else
+            local velocity = v4.root:FindFirstChild("BV")
+            if velocity and velocity:IsA("BodyVelocity") then velocity.Velocity = Vector3.zero end
         end;
         end -- refill pause
     end;
@@ -1764,7 +1836,7 @@ local function diagShow(stage)
     if target and target:IsA("BasePart") and v4.root and v4.root.Parent then
         distance = string.format("%.1f studs", (v4.root.Position - target.Position).Magnitude)
     end
-    diagPanel.Text = "YOZAKURA DIAGNOSTICS 13\nStage: " .. stage
+    diagPanel.Text = "YOZAKURA DIAGNOSTICS 14\nStage: " .. stage
         .. "\nTarget: " .. (target and target:GetFullName() or "none")
         .. "\nDistance: " .. distance
         .. "\nAttack calls attempted: " .. tostring(diagCount)
@@ -1885,10 +1957,7 @@ v3["4a"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         coroutine.wrap(v136)();
         v3["4a"].BackgroundColor3 = Color3.new(0, 1, 0);
     else
-        v3["4a"].BackgroundColor3 = Color3.new(1, 0, 0);
-        if v4.root:FindFirstChild("BodyPosition") then
-            v4.root:FindFirstChild("BodyPosition"):Destroy();
-        end;
+        stopAutoFarm()
     end;
 end);
 local function clickOnce()
