@@ -1927,7 +1927,7 @@ local function diagShow(stage)
     if target and target:IsA("BasePart") and v4.root and v4.root.Parent then
         distance = string.format("%.1f studs", (v4.root.Position - target.Position).Magnitude)
     end
-    diagPanel.Text = "YOZAKURA DIAGNOSTICS 18\nStage: " .. stage
+    diagPanel.Text = "YOZAKURA DIAGNOSTICS 19\nStage: " .. stage
         .. "\nTarget: " .. (target and target:GetFullName() or "none")
         .. "\nDistance: " .. distance
         .. "\nAttack calls attempted: " .. tostring(diagCount)
@@ -1978,6 +1978,38 @@ teleportButton.Activated:Connect(function()
     teleportBusy = false
 end)
 
+-- Local visual feedback only; these labels never claim server-confirmed damage.
+local function showAttemptNumber(target, number)
+    if not target or not target:IsA("BasePart") then return end
+    local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
+    if not playerGui then return end
+    local popup = Instance.new("BillboardGui")
+    popup.Name = "YozakuraAttackAttempt"
+    popup.Adornee = target
+    popup.Size = UDim2.fromOffset(170, 46)
+    popup.AlwaysOnTop = true
+    popup.MaxDistance = 500
+    local lane = (number - 1) % 3 - 1
+    popup.StudsOffsetWorldSpace = Vector3.new(lane * 3, 3 + ((number - 1) % 2), 0)
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.fromScale(1, 1)
+    label.BackgroundTransparency = 1
+    label.Font = Enum.Font.GothamBold
+    label.TextSize = 22
+    label.TextColor3 = Color3.fromRGB(100, 220, 255)
+    label.TextStrokeTransparency = 0.2
+    label.Text = "ATTEMPT " .. tostring(number) .. "/10"
+    label.Parent = popup
+    popup.Parent = playerGui
+    game:GetService("Debris"):AddItem(popup, 1.2)
+    local tween = game:GetService("TweenService")
+    tween:Create(popup, TweenInfo.new(1), {
+        StudsOffsetWorldSpace = popup.StudsOffsetWorldSpace + Vector3.new(0, 6, 0)
+    }):Play()
+    tween:Create(label, TweenInfo.new(0.7, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, 0, false, 0.3), {
+        TextTransparency = 1, TextStrokeTransparency = 1
+    }):Play()
+end
 local function diagHit(...)
     diagCount = diagCount + 1
     diagShow("Waiting for attack call to return")
@@ -2010,6 +2042,7 @@ local function hitBurst(target, maxDistance)
         if not humanoid or humanoid.Health <= 0 then break end
         if (v4.root.Position - target.Position).Magnitude > maxDistance then break end
         nextHitAt = os.clock() + 0.1
+        pcall(showAttemptNumber, target, hit)
         diagHit("Hitboxes", "Register", target, math.random(215, 230), math.random(10, 100))
         sent = sent + 1
 
