@@ -1764,7 +1764,7 @@ local function diagShow(stage)
     if target and target:IsA("BasePart") and v4.root and v4.root.Parent then
         distance = string.format("%.1f studs", (v4.root.Position - target.Position).Magnitude)
     end
-    diagPanel.Text = "YOZAKURA DIAGNOSTICS 11\nStage: " .. stage
+    diagPanel.Text = "YOZAKURA DIAGNOSTICS 12\nStage: " .. stage
         .. "\nTarget: " .. (target and target:GetFullName() or "none")
         .. "\nDistance: " .. distance
         .. "\nAttack calls attempted: " .. tostring(diagCount)
@@ -1894,31 +1894,28 @@ autoAttackButton.Position = UDim2.new(0.02, 0, 0.15, 288)
 autoAttackButton.BackgroundColor3 = Color3.fromRGB(45, 75, 110)
 autoAttackButton.TextColor3 = Color3.new(1, 1, 1)
 autoAttackButton.TextSize = 16
-autoAttackButton.Text = "Auto clicker: OFF"
+autoAttackButton.Text = "Center clicks: OFF"
 autoAttackButton.Parent = v3["1"]
 autoAttackButton.Activated:Connect(function()
     v4.autoAttack = not v4.autoAttack
-    autoAttackButton.Text = v4.autoAttack and "Auto clicker: ON (0.1 s)" or "Auto clicker: OFF"
+    autoAttackButton.Text = v4.autoAttack and "Center clicks: ON (0.1 s)" or "Center clicks: OFF"
 end)
 local clickCount = 0
 local function clickOnce()
     local input = game:GetService("UserInputService")
     if input:GetFocusedTextBox() then return false end
-    local position = input:GetMouseLocation()
+    local camera = workspace.CurrentCamera
+    if not camera then return false end
+    local position = camera.ViewportSize * 0.5
     local gui = localPlayer:FindFirstChildOfClass("PlayerGui")
     if gui then
         for _, object in ipairs(gui:GetGuiObjectsAtPosition(position.X, position.Y)) do
             if object:IsA("GuiButton") or object:IsA("TextBox") then return false end
         end
     end
-    if type(mouse1click) == "function" then
-        mouse1click()
-    else
-        local vim = game:GetService("VirtualInputManager")
-        vim:SendMouseButtonEvent(position.X, position.Y, 0, true, game, 0)
-        -- A paired release prevents a held attack if the loop is later stopped.
-        vim:SendMouseButtonEvent(position.X, position.Y, 0, false, game, 0)
-    end
+    local vim = game:GetService("VirtualInputManager")
+    vim:SendMouseButtonEvent(position.X, position.Y, 0, true, game, 0)
+    vim:SendMouseButtonEvent(position.X, position.Y, 0, false, game, 0)
     return true
 end
 task.spawn(function()
@@ -1926,17 +1923,17 @@ task.spawn(function()
         local started = os.clock()
         if v4.autoAttack then
             if refillBlocksCombat() then
-                autoAttackButton.Text = "Auto clicker: paused for refill (0.1 s)"
+                autoAttackButton.Text = "Center clicks: paused for refill (0.1 s)"
             else
                 local ok, clicked = pcall(clickOnce)
                 if not ok then
                     v4.autoAttack = false
-                    autoAttackButton.Text = "Clicker unavailable: " .. tostring(clicked)
+                    autoAttackButton.Text = "Center input unavailable: " .. tostring(clicked)
                 elseif clicked then
                     clickCount = clickCount + 1
-                    autoAttackButton.Text = "Auto clicker: 0.1 s | clicks: " .. clickCount
+                    autoAttackButton.Text = "Center clicks: 0.1 s | clicks: " .. clickCount
                 else
-                    autoAttackButton.Text = "Auto clicker: paused over UI / typing"
+                    autoAttackButton.Text = "Center clicks: paused over UI / typing"
                 end
             end
         end
