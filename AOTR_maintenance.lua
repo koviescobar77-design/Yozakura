@@ -1836,7 +1836,7 @@ local function diagShow(stage)
     if target and target:IsA("BasePart") and v4.root and v4.root.Parent then
         distance = string.format("%.1f studs", (v4.root.Position - target.Position).Magnitude)
     end
-    diagPanel.Text = "YOZAKURA DIAGNOSTICS 14\nStage: " .. stage
+    diagPanel.Text = "YOZAKURA DIAGNOSTICS 15\nStage: " .. stage
         .. "\nTarget: " .. (target and target:GetFullName() or "none")
         .. "\nDistance: " .. distance
         .. "\nAttack calls attempted: " .. tostring(diagCount)
@@ -1900,10 +1900,36 @@ local function diagHit(...)
     diagShow("Attack call returned")
     return result
 end
+local function hitBurst(target, maxDistance)
+    local sent = 0
+    for hit = 1, 10 do
+        if not v4.oldfarmEnabled or refillBlocksCombat() then break end
+        if not target or not target.Parent or not target:IsDescendantOf(v4.titans) then break end
+        if not v4.root or not v4.root.Parent then break end
+        local ancestor = target.Parent
+        local humanoid
+        while ancestor and ancestor ~= v4.titans do
+            humanoid = ancestor:FindFirstChildOfClass("Humanoid")
+            if humanoid then break end
+            ancestor = ancestor.Parent
+        end
+        if not humanoid or humanoid.Health <= 0 then break end
+        if (v4.root.Position - target.Position).Magnitude > maxDistance then break end
+        diagHit("Hitboxes", "Register", target, math.random(215, 230), math.random(10, 100))
+        sent = sent + 1
+        if hit < 10 then task.wait(0.03) end
+    end
+    diagDetail = "Burst attempts sent: " .. sent .. "/10 (accepted hits are unverified)"
+    diagShow(refillBlocksCombat() and "Paused for refill" or "Burst finished")
+end
 local function v136() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref), v46 (ref)
     local function iteration()
-        if refillBlocksCombat() then return end
+        if refillBlocksCombat() then
+            diagDetail = "Blade supplies are empty or a refill is active. See the REFILL panel."
+            diagShow("Paused for refill")
+            return
+        end
 
         diagShow("Finding target")
         v46();
@@ -1914,12 +1940,12 @@ local function v136() --[[ Line: 67 ]] --[[ Name: 25ms ]]
                 if (v4.root.Position - v4.nape.Position).Magnitude <= 250 then
                     diagShow("Sending slash request");
                     if not v4.autoAttack then v4.remotePost:FireServer("Attacks", "Slash", true) end;
-                    diagHit("Hitboxes", "Register", v4.nape, math.random(215, 230), math.random(10, 100));
+                    hitBurst(v4.nape, 250);
                 end;
             elseif (v4.root.Position - v4.nape.Position).Magnitude <= 175 then
                 diagShow("Sending slash request");
                     if not v4.autoAttack then v4.remotePost:FireServer("Attacks", "Slash", true) end;
-                diagHit("Hitboxes", "Register", v4.nape, math.random(215, 230), math.random(10, 100));
+                hitBurst(v4.nape, 175);
             end;
         end;
         if not v4.autoAttack then task.wait(0.05) end
