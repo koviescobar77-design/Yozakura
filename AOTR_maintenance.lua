@@ -1317,6 +1317,7 @@ local function stopAutoFarm(message)
     v4.autoAttack = false
     v4.nape = nil
     v4.noTitanSince = nil
+    v4.farmDeadline = nil
     v3["4a"].BackgroundColor3 = Color3.new(1, 0, 0)
     v3["32"].BackgroundColor3 = Color3.new(1, 0, 0)
     if v4.farmHover and v4.farmHover.Parent then
@@ -1343,19 +1344,42 @@ local function stopAutoFarm(message)
     v4.farmCollisions = {}
     if message then v2("Autofarm stopped", message, 6) end
 end
+local function requestMissionRetry()
+    v2("Mission retry", "Five minutes elapsed. Sending mission retry request.", 8)
+    task.spawn(function()
+        local finished = false
+        task.delay(10, function()
+            if not finished then
+                v2("Mission retry pending", "No server response yet. Farming remains stopped.", 8)
+            end
+        end)
+        local ok, err = pcall(function()
+            v4.remoteGet:InvokeServer("Functions", "Retry", "Add")
+        end)
+        finished = true
+        if not ok then
+            v2("Mission retry failed", tostring(err), 8)
+        else
+            v2("Mission retry requested", "Request returned; restart is unconfirmed. The game may require the mission results screen.", 10)
+        end
+    end)
+end
 task.spawn(function()
     while v3["1"].Parent do
         task.wait(0.2)
         if v4.oldfarmEnabled or v4.autofarmEnabled then
-            if hasLivingTitans() then
+            v4.farmDeadline = v4.farmDeadline or (os.clock() + 300)
+            if os.clock() >= v4.farmDeadline then
+                stopAutoFarm("Five-minute session finished.")
+                requestMissionRetry()
+            elseif hasLivingTitans() then
                 v4.noTitanSince = nil
-            else
-                v4.noTitanSince = v4.noTitanSince or os.clock()
-                if os.clock() - v4.noTitanSince >= 2 then
-                    stopAutoFarm("No living titans remain. Enable autofarm again for a new wave.")
-                end
+            elseif not v4.noTitanSince then
+                v4.noTitanSince = os.clock()
+                v2("Waiting for targets", "No living titans found. The five-minute timer continues.", 5)
             end
         else
+            v4.farmDeadline = nil
             v4.noTitanSince = nil
         end
     end
@@ -1781,21 +1805,6 @@ v3["32"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         v2("Premium", "Feature locked, check discord.");
     end;
 end);
-local function v121()
-    while v3["1"].Parent do
-        task.wait(1)
-        if v4.autofarmEnabled or v4.oldfarmEnabled then
-            local title = findPath(v4.player, {"PlayerGui", "Interface", "Rewards", "Main", "Info", "Main", "Buttons", "Retry", "Title"})
-            if title and (title:IsA("TextLabel") or title:IsA("TextButton")) then
-                if string.find(title.Text, "STARTING", 1, true) then return end
-                if not string.find(title.Text, "(0/0)", 1, true) then
-                    v4.remoteGet:InvokeServer("Functions", "Retry", "Add")
-                end
-            end
-        end
-    end
-end
-task.spawn(v121)
 local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref), v46 (ref)
     local existingHover = v4.root:FindFirstChild("BodyPosition")
@@ -1873,7 +1882,7 @@ local function diagShow(stage)
     if target and target:IsA("BasePart") and v4.root and v4.root.Parent then
         distance = string.format("%.1f studs", (v4.root.Position - target.Position).Magnitude)
     end
-    diagPanel.Text = "YOZAKURA DIAGNOSTICS 16\nStage: " .. stage
+    diagPanel.Text = "YOZAKURA DIAGNOSTICS 17\nStage: " .. stage
         .. "\nTarget: " .. (target and target:GetFullName() or "none")
         .. "\nDistance: " .. distance
         .. "\nAttack calls attempted: " .. tostring(diagCount)
@@ -1937,9 +1946,12 @@ local function diagHit(...)
     diagShow("Attack call returned")
     return result
 end
+local nextHitAt = 0
 local function hitBurst(target, maxDistance)
     local sent = 0
     for hit = 1, 10 do
+        local delay = nextHitAt - os.clock()
+        if delay > 0 then task.wait(delay) end
         if not v4.oldfarmEnabled or refillBlocksCombat() then break end
         if not target or not target.Parent or not target:IsDescendantOf(v4.titans) then break end
         if not v4.root or not v4.root.Parent then break end
@@ -1952,9 +1964,10 @@ local function hitBurst(target, maxDistance)
         end
         if not humanoid or humanoid.Health <= 0 then break end
         if (v4.root.Position - target.Position).Magnitude > maxDistance then break end
+        nextHitAt = os.clock() + 0.1
         diagHit("Hitboxes", "Register", target, math.random(215, 230), math.random(10, 100))
         sent = sent + 1
-        if hit < 10 then task.wait(0.03) end
+
     end
     diagDetail = "Burst attempts sent: " .. sent .. "/10 (accepted hits are unverified)"
     diagShow(refillBlocksCombat() and "Paused for refill" or "Burst finished")
