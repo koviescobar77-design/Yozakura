@@ -34,9 +34,13 @@ waitForValue("titan header", function()
     end
     return nil
 end)
-local missionRefill = waitForValue("refill station", function()
-    return findPath(workspace, {"Unclimbable", "Reloads", "GasTanks", "Refill"})
-end)
+-- Refill is optional: some maps do not expose this legacy path.
+local function findMissionRefill()
+    local refill = findPath(workspace, {"Unclimbable", "Reloads", "GasTanks", "Refill"})
+    if refill and refill:IsA("BasePart") then return refill end
+    return nil
+end
+local missionRefill = findMissionRefill()
 local initialCharacter = localPlayer.Character
 assert(initialCharacter, "Character disappeared during startup; retry after respawning")
 local remotes = waitForValue("Assets.Remotes", function()
@@ -1656,6 +1660,11 @@ local function v136() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         end;
         task.wait(0.05);
         if string.find(l_Sets_1.Text, "0") and v4.blade.Transparency == 1 then
+            v4.refill = findMissionRefill()
+            if not v4.refill then
+                warn("[Yozakura] Refill unavailable at the configured path; reload skipped.")
+                return
+            end
             v4.remoteGet:InvokeServer("Blades", "Full_Reload", "Left", v4.refill);
             v4.remoteGet:InvokeServer("Blades", "Full_Reload", "Right", v4.refill);
             l_Sets_1.Text = "3 / 3";
@@ -1683,6 +1692,11 @@ v3["4a"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
 end);
 v3["50"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref)
+    v4.refill = findMissionRefill()
+    if not v4.refill then
+        v2("Refill unavailable", "This map does not expose the configured refill station.")
+        return
+    end
     local v137 = v4.refill.Position + Vector3.new(0, 2, 0);
     local v138 = (v137 - v4.root.Position).magnitude / 225;
     local v139 = TweenInfo.new(v138, Enum.EasingStyle.Linear, Enum.EasingDirection.In);
