@@ -1002,6 +1002,8 @@ local function requestRefill(manual)
     task.spawn(function()
         local suspended = {}
         local root
+        local returnCFrame
+        local farmingBeforeRefill = v4.oldfarmEnabled or v4.autofarmEnabled
         local ok, err = xpcall(function()
             setRefillStatus("Looking for a refill station...")
             local station = resolveRefill()
@@ -1009,6 +1011,7 @@ local function requestRefill(manual)
             local character = localPlayer.Character
             root = character and character:FindFirstChild("HumanoidRootPart")
             if not root or not root:IsA("BasePart") then error("Player root is missing.", 0) end
+            returnCFrame = root.CFrame
             local before = readBladeCount(findBladeSets())
             for _, mover in ipairs(root:GetChildren()) do
                 if mover:IsA("BodyPosition") or mover:IsA("BodyVelocity") then
@@ -1047,7 +1050,13 @@ local function requestRefill(manual)
                 task.wait(0.25)
                 local count = readBladeCount(findBladeSets())
                 if before ~= nil and count ~= nil and count > before then
-                    setRefillStatus("Blade sets increased: " .. before .. " -> " .. count)
+                    if farmingBeforeRefill and (v4.oldfarmEnabled or v4.autofarmEnabled)
+                        and localPlayer.Character == character and root.Parent then
+                        root.CFrame = returnCFrame
+                        root.AssemblyLinearVelocity = Vector3.zero
+                        root.AssemblyAngularVelocity = Vector3.zero
+                    end
+                    setRefillStatus("Blade sets increased: " .. before .. " -> " .. count .. ". Refill confirmed.")
                     return
                 end
                 if completed and operationError then error(operationError, 0) end
@@ -1778,7 +1787,7 @@ local function diagShow(stage)
     if target and target:IsA("BasePart") and v4.root and v4.root.Parent then
         distance = string.format("%.1f studs", (v4.root.Position - target.Position).Magnitude)
     end
-    diagPanel.Text = "YOZAKURA DIAGNOSTICS 9\nStage: " .. stage
+    diagPanel.Text = "YOZAKURA DIAGNOSTICS 10\nStage: " .. stage
         .. "\nTarget: " .. (target and target:GetFullName() or "none")
         .. "\nDistance: " .. distance
         .. "\nAttack calls attempted: " .. tostring(diagCount)
@@ -1849,7 +1858,7 @@ local function v136() --[[ Line: 67 ]] --[[ Name: 25ms ]]
 
         diagShow("Finding target")
         v46();
-        task.wait(0.05);
+        if not v4.autoAttack then task.wait(0.05) end
         diagShow("Checking target distance")
         if v4.nape ~= nil then
             if missionTitans:FindFirstChild("Attack_Titan") then
@@ -1864,9 +1873,10 @@ local function v136() --[[ Line: 67 ]] --[[ Name: 25ms ]]
                 diagHit("Hitboxes", "Register", v4.nape, math.random(215, 230), math.random(10, 100));
             end;
         end;
-        task.wait(0.05);
+        if not v4.autoAttack then task.wait(0.05) end
     end
-    while v4.oldfarmEnabled and task.wait(v4.autoAttack and 0.35 or 1) do
+    while v4.oldfarmEnabled do
+        local iterationStarted = os.clock()
         local ok, err = xpcall(iteration, function(message)
             return tostring(message)
         end)
@@ -1877,6 +1887,8 @@ local function v136() --[[ Line: 67 ]] --[[ Name: 25ms ]]
             diagShow("Stopped after error")
             return
         end
+        local targetInterval = v4.autoAttack and 0.1 or 1
+        task.wait(math.max(0.01, targetInterval - (os.clock() - iterationStarted)))
     end
     diagShow("Stopped")
 end
@@ -1912,11 +1924,11 @@ autoAttackButton.Text = "Auto attack: OFF"
 autoAttackButton.Parent = v3["1"]
 autoAttackButton.Activated:Connect(function()
     v4.autoAttack = not v4.autoAttack
-    autoAttackButton.Text = v4.autoAttack and "Auto attack: ON (up to 3 swings/sec)" or "Auto attack: OFF"
+    autoAttackButton.Text = v4.autoAttack and "Auto attack: ON (100 ms target interval)" or "Auto attack: OFF"
 end)
 task.spawn(function()
     while v3["1"].Parent do
-        task.wait(0.35)
+        task.wait(0.1)
         if v4.autoAttack and not v4.refilling and not v4.oldfarmEnabled then
             local ok, err = pcall(function()
                 v46()
@@ -1931,13 +1943,28 @@ task.spawn(function()
         end
     end
 end)
--- A single polling worker avoids duplicate refill jobs.
+-- Event observation triggers at zero; polling reconnects if the HUD changes.
+v4.bladeEnabled = true
+v3["13"].BackgroundColor3 = Color3.new(0, 1, 0)
+local bladeCountConnection
+local observedBladeLabel
+local function checkEmptyBlades()
+    if v4.bladeEnabled and not v4.refilling and readBladeCount(findBladeSets()) == 0 then
+        requestRefill(false)
+    end
+end
 task.spawn(function()
     local lastBladeReload = -math.huge
     while v3["1"].Parent do
-        task.wait(1)
+        local label = findBladeSets()
+        if label ~= observedBladeLabel then
+            if bladeCountConnection then bladeCountConnection:Disconnect() end
+            bladeCountConnection = nil
+            observedBladeLabel = label
+            if label then bladeCountConnection = label:GetPropertyChangedSignal("Text"):Connect(checkEmptyBlades) end
+        end
         if v4.bladeEnabled and not v4.refilling then
-            local count = readBladeCount(findBladeSets())
+            local count, maximum = readBladeCount(label)
             if count == 0 then
                 requestRefill(false)
             elseif count and count > 0 and v4.blade.Transparency == 1 and os.clock() - lastBladeReload > 3 then
@@ -1946,9 +1973,13 @@ task.spawn(function()
                 if not ok then setRefillStatus("Blade reload error: " .. tostring(err)) end
             elseif count == nil then
                 setRefillStatus("Blade-count UI unavailable. Use Testing > TP To Refill manually.")
+            elseif os.clock() - lastRefillAttempt > 12 then
+                setRefillStatus("Watching " .. count .. "/" .. maximum .. "; automatic station trip at 0. No distance cap.")
             end
         end
+        task.wait(0.5)
     end
+    if bladeCountConnection then bladeCountConnection:Disconnect() end
 end)
 task.spawn(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref)
