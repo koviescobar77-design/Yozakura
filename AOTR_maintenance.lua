@@ -1618,21 +1618,66 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         end;
     end;
 end;
+-- Local diagnostics only: no external reporting.
+local diagPanel = Instance.new("TextLabel")
+diagPanel.Name = "YozakuraDiagnostics"
+diagPanel.Size = UDim2.new(0.42, 0, 0, 180)
+diagPanel.Position = UDim2.new(0.02, 0, 0.15, 0)
+diagPanel.BackgroundColor3 = Color3.fromRGB(20, 23, 30)
+diagPanel.BackgroundTransparency = 0.1
+diagPanel.TextColor3 = Color3.new(1, 1, 1)
+diagPanel.TextSize = 15
+diagPanel.TextWrapped = true
+diagPanel.TextXAlignment = Enum.TextXAlignment.Left
+diagPanel.TextYAlignment = Enum.TextYAlignment.Top
+diagPanel.Parent = v3["1"]
+local diagCount = 0
+local diagDetail = "Enable Testing > VIP Autofarm"
+local function diagShow(stage)
+    local target = v4.nape
+    local distance = "none"
+    if target and target:IsA("BasePart") and v4.root and v4.root.Parent then
+        distance = string.format("%.1f studs", (v4.root.Position - target.Position).Magnitude)
+    end
+    diagPanel.Text = "YOZAKURA DIAGNOSTICS 7\nStage: " .. stage
+        .. "\nTarget: " .. (target and target:GetFullName() or "none")
+        .. "\nDistance: " .. distance
+        .. "\nAttack calls attempted: " .. tostring(diagCount)
+        .. "\n" .. diagDetail
+end
+diagShow("Idle")
+local function diagHit(...)
+    diagCount = diagCount + 1
+    diagShow("Waiting for attack call to return")
+    local result = v4.remoteGet:InvokeServer(...)
+    local kind = type(result)
+    local summary = kind
+    if kind == "string" or kind == "number" or kind == "boolean" or kind == "nil" then
+        summary = tostring(result):sub(1, 180)
+    end
+    diagDetail = "Call returned: " .. summary .. " (not proof of damage)"
+    diagShow("Attack call returned")
+    return result
+end
 local function v136() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref), v46 (ref)
-    while v4.oldfarmEnabled and task.wait(1) do
+    local function iteration()
         local l_Sets_1 = findBladeSets();
-        coroutine.wrap(v46)();
+        diagShow("Finding target")
+        v46();
         task.wait(0.05);
+        diagShow("Checking target distance")
         if v4.nape ~= nil then
             if missionTitans:FindFirstChild("Attack_Titan") then
                 if (v4.root.Position - v4.nape.Position).Magnitude <= 250 then
+                    diagShow("Sending slash request");
                     v4.remotePost:FireServer("Attacks", "Slash", true);
-                    v4.remoteGet:InvokeServer("Hitboxes", "Register", v4.nape, math.random(215, 230), math.random(10, 100));
+                    diagHit("Hitboxes", "Register", v4.nape, math.random(215, 230), math.random(10, 100));
                 end;
             elseif (v4.root.Position - v4.nape.Position).Magnitude <= 175 then
-                v4.remotePost:FireServer("Attacks", "Slash", true);
-                v4.remoteGet:InvokeServer("Hitboxes", "Register", v4.nape, math.random(215, 230), math.random(10, 100));
+                diagShow("Sending slash request");
+                    v4.remotePost:FireServer("Attacks", "Slash", true);
+                diagHit("Hitboxes", "Register", v4.nape, math.random(215, 230), math.random(10, 100));
             end;
         end;
         task.wait(0.05);
@@ -1643,8 +1688,21 @@ local function v136() --[[ Line: 67 ]] --[[ Name: 25ms ]]
                 v4.remoteGet:InvokeServer("Blades", "Full_Reload", "Right", v4.refill);
             end
         end;
-    end;
-end;
+    end
+    while v4.oldfarmEnabled and task.wait(1) do
+        local ok, err = xpcall(iteration, function(message)
+            return tostring(message)
+        end)
+        if not ok then
+            v4.oldfarmEnabled = false
+            v3["4a"].BackgroundColor3 = Color3.new(1, 0, 0)
+            diagDetail = "ERROR: " .. tostring(err)
+            diagShow("Stopped after error")
+            return
+        end
+    end
+    diagShow("Stopped")
+end
 if v4.oldfarmEnabled then
     v3["4a"].BackgroundColor3 = Color3.new(0, 1, 0);
     coroutine.wrap(v134)();
