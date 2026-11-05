@@ -821,6 +821,22 @@ local missionTitans = waitForValue("Titans folder", function()
     return workspace:FindFirstChild("Titans")
 end)
 -- Refill is optional: some maps do not expose this legacy path.
+-- Custom station labels observed in the manual refill video: REFILLS: 9/10 [R].
+local function refillLabelInfo(text)
+    local plain = text:gsub("<[^>]->", ""):upper()
+    local remaining = plain:match("REFILLS:%s*(%d+)%s*/%s*%d+")
+    return tonumber(remaining), plain:find("[R]", 1, true) ~= nil
+end
+local function refillLabelPart(label)
+    local gui = label:FindFirstAncestorWhichIsA("BillboardGui")
+        or label:FindFirstAncestorWhichIsA("SurfaceGui")
+    if not gui then return nil end
+    local part = gui.Adornee or gui.Parent
+    if part and part:IsA("Attachment") then part = part.Parent end
+    if part and part:IsA("Model") then part = part.PrimaryPart end
+    if part and part:IsA("BasePart") then return part end
+    return nil
+end
 local function resolveRefill()
     local root = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
     if not root then return nil end
@@ -858,6 +874,20 @@ local function resolveRefill()
             end
         end
     end
+    -- Custom world labels can live in either Workspace or PlayerGui.
+    local function scanLabels(container)
+        if not container then return end
+        for _, label in ipairs(container:GetDescendants()) do
+            if label:IsA("TextLabel") or label:IsA("TextButton") then
+                local remaining, usesR = refillLabelInfo(label.Text)
+                if remaining and remaining > 0 and usesR then
+                    consider(refillLabelPart(label), nil, "keyR")
+                end
+            end
+        end
+    end
+    scanLabels(workspace)
+    scanLabels(localPlayer:FindFirstChildOfClass("PlayerGui"))
     return best
 end
 local function findMissionRefill()
@@ -995,7 +1025,14 @@ local function requestRefill(manual)
             local completed, operationError = false, nil
             local interactionThread = task.spawn(function()
                 local callOK, callError = pcall(function()
-                    if station.method == "prompt" then
+                    if station.method == "keyR" then
+                        assert(not game:GetService("UserInputService"):GetFocusedTextBox(),
+                            "Close the chat/text box before refilling.")
+                        local input = game:GetService("VirtualInputManager")
+                        input:SendKeyEvent(true, Enum.KeyCode.R, false, game)
+                        task.wait(0.15)
+                        input:SendKeyEvent(false, Enum.KeyCode.R, false, game)
+                    elseif station.method == "prompt" then
                         if type(fireproximityprompt) == "function" then
                             fireproximityprompt(station.prompt, station.prompt.HoldDuration)
                         else
@@ -1836,7 +1873,7 @@ local function diagShow(stage)
     if target and target:IsA("BasePart") and v4.root and v4.root.Parent then
         distance = string.format("%.1f studs", (v4.root.Position - target.Position).Magnitude)
     end
-    diagPanel.Text = "YOZAKURA DIAGNOSTICS 15\nStage: " .. stage
+    diagPanel.Text = "YOZAKURA DIAGNOSTICS 16\nStage: " .. stage
         .. "\nTarget: " .. (target and target:GetFullName() or "none")
         .. "\nDistance: " .. distance
         .. "\nAttack calls attempted: " .. tostring(diagCount)
