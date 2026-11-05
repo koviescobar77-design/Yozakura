@@ -1,4 +1,4 @@
--- Yozakura startup revision 5: menu first, optional refill, bounded dependency checks.
+-- Yozakura startup revision 6: menu first, optional refill, bounded dependency checks.
 -- Maintenance revision: static fixes only; live game compatibility unverified.
 if not game:IsLoaded() then game.Loaded:Wait() end
 local function waitForValue(label, getter)
@@ -1622,7 +1622,6 @@ local function v136() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref), v46 (ref)
     while v4.oldfarmEnabled and task.wait(1) do
         local l_Sets_1 = findBladeSets();
-        if not l_Sets_1 then warn("Blade Sets UI is unavailable"); return end
         coroutine.wrap(v46)();
         task.wait(0.05);
         if v4.nape ~= nil then
@@ -1637,15 +1636,12 @@ local function v136() --[[ Line: 67 ]] --[[ Name: 25ms ]]
             end;
         end;
         task.wait(0.05);
-        if string.find(l_Sets_1.Text, "0") and v4.blade.Transparency == 1 then
+        if l_Sets_1 and string.find(l_Sets_1.Text, "0", 1, true) and v4.blade.Transparency == 1 then
             v4.refill = findMissionRefill()
-            if not v4.refill then
-                warn("[Yozakura] Refill unavailable at the configured path; reload skipped.")
-                return
+            if v4.refill then
+                v4.remoteGet:InvokeServer("Blades", "Full_Reload", "Left", v4.refill);
+                v4.remoteGet:InvokeServer("Blades", "Full_Reload", "Right", v4.refill);
             end
-            v4.remoteGet:InvokeServer("Blades", "Full_Reload", "Left", v4.refill);
-            v4.remoteGet:InvokeServer("Blades", "Full_Reload", "Right", v4.refill);
-            l_Sets_1.Text = "3 / 3";
         end;
     end;
 end;
