@@ -19,13 +19,13 @@ status.TextSize = 16
 status.TextWrapped = true
 status.Parent = gui
 local function report(message)
-    status.Text = "Yozakura — diagnostic revision 11\n" .. tostring(message)
+    status.Text = "Yozakura — diagnostic revision 12\n" .. tostring(message)
     print("[Yozakura] " .. tostring(message))
 end
 report("Downloading script...")
 local ok, err = xpcall(function()
     assert(type(loadstring) == "function", "This environment does not provide loadstring")
-    local source = game:HttpGet("https://raw.githubusercontent.com/koviescobar77-design/Yozakura/98eebd57a664fd479ee0c105ec3cae8ea53ce165/AOTR_maintenance.lua")
+    local source = game:HttpGet("https://raw.githubusercontent.com/koviescobar77-design/Yozakura/121ef53bb22c4b911e4656cab43c490c80bbee25/AOTR_maintenance.lua")
     assert(type(source) == "string" and #source > 0, "Empty download")
     local chunk, compileError = loadstring(source, "@Yozakura/AOTR_maintenance.lua")
     assert(chunk, compileError)
