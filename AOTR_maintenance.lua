@@ -1,4 +1,4 @@
--- Yozakura startup revision 4: menu first, optional refill, bounded dependency checks.
+-- Yozakura startup revision 5: menu first, optional refill, bounded dependency checks.
 -- Maintenance revision: static fixes only; live game compatibility unverified.
 if not game:IsLoaded() then game.Loaded:Wait() end
 local function waitForValue(label, getter)
@@ -863,7 +863,7 @@ local v4 = {
     bladebox = initialCharacter:FindFirstChild("Main"), 
     injuryFolder = requirePath(initialCharacter, {"Injuries"}), 
     buttonsFolder = requirePath(localPlayer, {"PlayerGui", "Interface", "Buttons"}), 
-    hotbar = requirePath(localPlayer, {"PlayerGui", "Interface", "HUD", "Main", "Top", "Hotbar"}), 
+    hotbar = findPath(localPlayer, {"PlayerGui", "Interface", "HUD", "Main", "Top", "Hotbar"}), 
     titans = missionTitans, 
     VIM = game:GetService("VirtualInputManager"), 
     UIP = game:GetService("UserInputService"), 
@@ -1716,6 +1716,11 @@ end);
 task.wait(15);
 local function v151() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref)
+    v4.hotbar = findPath(localPlayer, {"PlayerGui", "Interface", "HUD", "Main", "Top", "Hotbar"})
+    if not v4.hotbar then
+        v2("Cooldown monitoring unavailable", "The configured hotbar path is missing. Other initialization can continue.", 8)
+        return
+    end
     for _, v148 in pairs(v4.hotbar:GetChildren()) do
         if v148.Name:find("Skill") then
             local l_Icon_0 = v148.Inner.Icon;
