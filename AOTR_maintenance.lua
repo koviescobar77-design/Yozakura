@@ -1337,6 +1337,7 @@ local function stopAutoFarm(message)
     v4.autofarmEnabled = false
     v4.autoAttack = false
     v4.nape = nil
+    v4.attackTarget = nil
     v4.noTitanSince = nil
     v4.farmDeadline = nil
     v3["4a"].BackgroundColor3 = Color3.new(1, 0, 0)
@@ -1849,62 +1850,47 @@ v3["32"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         v2("Premium", "Feature locked, check discord.");
     end;
 end);
-local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
-    -- upvalues: v4 (ref), v46 (ref)
-    local existingHover = v4.root:FindFirstChild("BodyPosition")
-    local v122 = existingHover or Instance.new("BodyPosition", v4.root)
-    v4.farmHover = v122
-    v4.ownsFarmHover = existingHover == nil
-    v4.savedFarmHover = {force = v122.MaxForce, d = v122.D, p = v122.P}
+local function v134()
+    if v4.teleportWorkerRunning then return end
+    v4.teleportWorkerRunning = true
     v4.farmCollisions = v4.farmCollisions or {}
-    local existingVelocity = v4.root:FindFirstChild("BV")
-    if existingVelocity and existingVelocity:IsA("BodyVelocity") then v4.savedFarmForce = existingVelocity.MaxForce end
-    v122.MaxForce = Vector3.new(0, 1000, 0);
-    v122.D = 1000;
-    v122.P = 1000;
-    while v4.oldfarmEnabled and task.wait(0.05) do
-        if not v4.oldfarmEnabled then break end
-        if not refillBlocksCombat() then
-        coroutine.wrap(v46)();
-        local v123 = 75;
-        if v4.titans:FindFirstChild("Attack_Titan") then
-            v123 = 195;
-        end;
-        if v4.nape ~= nil then
-            local l_BV_0 = v4.root:FindFirstChild("BV");
-            if l_BV_0 then
-                l_BV_0.MaxForce = Vector3.new(5500, 5500, 5500);
-            end;
-            local l_BG_0 = v4.root:FindFirstChild("BG");
-            local v126 = v4.nape.Position + Vector3.new(0, v123, 0);
-            if v4.nearTarget then
-                v126 = (v4.nape.CFrame * CFrame.new(0, 0, 12)).Position
+    local ok, err = pcall(function()
+        while v4.oldfarmEnabled do
+            if not refillBlocksCombat() then
+                local root = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if root then
+                    v4.root = root
+                    local target = v4.attackTarget
+                    if not target or not target.Parent then
+                        v46()
+                        target = v4.nape
+                    end
+                    -- A results/refill transition may have occurred while target selection yielded.
+                    if v4.oldfarmEnabled and not refillBlocksCombat()
+                        and target and target:IsA("BasePart") and target:IsDescendantOf(v4.titans) then
+                        local destination = (target.CFrame * CFrame.new(0, 0, 8)).Position
+                        local velocity = root:FindFirstChild("BV")
+                        if velocity and velocity:IsA("BodyVelocity") then
+                            if v4.savedFarmForce == nil then v4.savedFarmForce = velocity.MaxForce end
+                            velocity.MaxForce = Vector3.zero
+                            velocity.Velocity = Vector3.zero
+                        end
+                        root.CFrame = CFrame.lookAt(destination, target.Position)
+                        root.AssemblyLinearVelocity = Vector3.zero
+                        root.AssemblyAngularVelocity = Vector3.zero
+                        local gyro = root:FindFirstChild("BG")
+                        if gyro and gyro:IsA("BodyGyro") then gyro.CFrame = root.CFrame end
+                    end
+                end
             end
-            local delta = v126 - v4.root.Position
-            local l_Unit_0 = delta.Magnitude > 0.01 and delta.Unit or v4.root.CFrame.LookVector;
-            local l_Magnitude_2 = (v126 - v4.root.Position).Magnitude;
-            local v129 = math.min(l_Magnitude_2 * 3, 225);
-            if l_BV_0 then
-                l_BV_0.MaxForce = Vector3.new(5500, 5500, 5500);
-                l_BV_0.Velocity = l_Unit_0 * v129;
-            end;
-            v122.Position = Vector3.new(v122.Position.X, v126.Y, v122.Position.Z);
-            if l_BG_0 then
-                l_BG_0.CFrame = CFrame.new(v4.root.Position, v4.root.Position + l_Unit_0);
-            end;
-            for _, v133 in pairs(v4.character:GetDescendants()) do
-                if v133:IsA("BasePart") and v133.CanCollide == true then
-                    if v4.farmCollisions[v133] == nil then v4.farmCollisions[v133] = v133.CanCollide end
-                    v133.CanCollide = false;
-                end;
-            end;
-        else
-            local velocity = v4.root:FindFirstChild("BV")
-            if velocity and velocity:IsA("BodyVelocity") then velocity.Velocity = Vector3.zero end
-        end;
-        end -- refill pause
-    end;
-end;
+            task.wait(0.1)
+        end
+    end)
+    v4.teleportWorkerRunning = false
+    if not ok then
+        stopAutoFarm("Teleport movement stopped: " .. tostring(err))
+    end
+end
 -- Local diagnostics only: no external reporting.
 local diagCount = 0
 local diagDetail = ""
@@ -1927,6 +1913,7 @@ end
 
 local nextHitAt = 0
 local function hitBurst(target, maxDistance)
+    v4.attackTarget = target
     local sent = 0
     for hit = 1, 10 do
         local delay = nextHitAt - os.clock()
@@ -1948,6 +1935,7 @@ local function hitBurst(target, maxDistance)
         sent = sent + 1
 
     end
+    v4.attackTarget = nil
     diagDetail = "Burst attempts sent: " .. sent .. "/10 (accepted hits are unverified)"
     diagShow(refillBlocksCombat() and "Paused for refill" or "Burst finished")
 end
@@ -1985,6 +1973,7 @@ local function v136() --[[ Line: 67 ]] --[[ Name: 25ms ]]
             return tostring(message)
         end)
         if not ok then
+            v4.attackTarget = nil
             v4.oldfarmEnabled = false
             v3["4a"].BackgroundColor3 = Color3.new(1, 0, 0)
             diagDetail = "ERROR: " .. tostring(err)
@@ -2075,7 +2064,7 @@ task.spawn(function()
                 requestRefill(false)
             elseif count == 0 then
                 setRefillStatus("0 spare sets; equipped blade still visible or unverified. Combat remains enabled.")
-            elseif count and count > 0 and v4.blade.Transparency == 1 and not reloadInFlight and os.clock() - lastBladeReload > 3 then
+            elseif count and count > 0 and v4.blade.Transparency == 1 and not reloadInFlight and os.clock() - lastBladeReload > 1 then
                 lastBladeReload = os.clock()
                 reloadInFlight = true
                 local reloadThread = task.spawn(function()
