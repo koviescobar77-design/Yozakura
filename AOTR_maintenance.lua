@@ -880,7 +880,7 @@ local function resolveRefill()
         for _, label in ipairs(container:GetDescendants()) do
             if label:IsA("TextLabel") or label:IsA("TextButton") then
                 local remaining, usesR = refillLabelInfo(label.Text)
-                if remaining and remaining > 0 and usesR then
+                if remaining and remaining > 0 then
                     consider(refillLabelPart(label), nil, "keyR")
                 end
             end
@@ -987,6 +987,25 @@ local function setRefillStatus(message)
 end
 setRefillStatus("Idle. Main > Auto Refill enables automatic blade replenishment.")
 local lastRefillAttempt = -math.huge
+local function equippedBladeVisible()
+    local character = localPlayer.Character
+    local rig = character and character:FindFirstChild("Rig_" .. localPlayer.Name)
+    if not rig then return nil end -- Unknown is not evidence that blades are gone.
+    local found = false
+    for _, handName in ipairs({"LeftHand", "RightHand"}) do
+        local hand = rig:FindFirstChild(handName)
+        local blade = hand and hand:FindFirstChild("Blade_1")
+        if blade and blade:IsA("BasePart") then
+            found = true
+            if blade.Transparency < 1 then return true end
+        end
+    end
+    if found then return false end
+    return nil
+end
+local function needsStationRefill()
+    return readBladeCount(findBladeSets()) == 0 and equippedBladeVisible() == false
+end
 local function requestRefill(manual)
     if v4.refilling then return end
     if not manual and os.clock() - lastRefillAttempt < 5 then return end
@@ -1021,29 +1040,17 @@ local function requestRefill(manual)
             root.AssemblyLinearVelocity = Vector3.zero
             root.AssemblyAngularVelocity = Vector3.zero
             setRefillStatus("At " .. station.part:GetFullName())
-            task.wait(0.5)
+            task.wait(1)
             local completed, operationError = false, nil
             local interactionThread = task.spawn(function()
                 local callOK, callError = pcall(function()
-                    if station.method == "keyR" then
-                        assert(not game:GetService("UserInputService"):GetFocusedTextBox(),
-                            "Close the chat/text box before refilling.")
-                        local input = game:GetService("VirtualInputManager")
-                        input:SendKeyEvent(true, Enum.KeyCode.R, false, game)
-                        task.wait(0.15)
-                        input:SendKeyEvent(false, Enum.KeyCode.R, false, game)
-                    elseif station.method == "prompt" then
-                        if type(fireproximityprompt) == "function" then
-                            fireproximityprompt(station.prompt, station.prompt.HoldDuration)
-                        else
-                            station.prompt:InputHoldBegin()
-                            task.wait(station.prompt.HoldDuration + 0.1)
-                            station.prompt:InputHoldEnd()
-                        end
-                    else
-                        v4.remoteGet:InvokeServer("Blades", "Full_Reload", "Left", station.part)
-                        v4.remoteGet:InvokeServer("Blades", "Full_Reload", "Right", station.part)
-                    end
+                    assert(not game:GetService("UserInputService"):GetFocusedTextBox(),
+                        "Close the chat/text box before refilling.")
+                    local input = game:GetService("VirtualInputManager")
+                    setRefillStatus("At refill station; pressing R.")
+                    input:SendKeyEvent(true, Enum.KeyCode.R, false, game)
+                    task.wait(0.2)
+                    input:SendKeyEvent(false, Enum.KeyCode.R, false, game)
                 end)
                 if not callOK then operationError = tostring(callError) end
                 completed = true
@@ -1108,7 +1115,7 @@ end
 local function refillBlocksCombat()
     if missionResults() then return true end
     if v4.refilling then return true end
-    if v4.bladeEnabled and readBladeCount(findBladeSets()) == 0 then
+    if v4.bladeEnabled and needsStationRefill() then
         requestRefill(false)
         return true
     end
@@ -1927,7 +1934,7 @@ local function diagShow(stage)
     if target and target:IsA("BasePart") and v4.root and v4.root.Parent then
         distance = string.format("%.1f studs", (v4.root.Position - target.Position).Magnitude)
     end
-    diagPanel.Text = "YOZAKURA DIAGNOSTICS 21\nStage: " .. stage
+    diagPanel.Text = "YOZAKURA DIAGNOSTICS 22\nStage: " .. stage
         .. "\nTarget: " .. (target and target:GetFullName() or "none")
         .. "\nDistance: " .. distance
         .. "\nAttack calls attempted: " .. tostring(diagCount)
@@ -2137,7 +2144,7 @@ local function v136() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref), v46 (ref)
     local function iteration()
         if refillBlocksCombat() then
-            diagDetail = "Blade supplies are empty or a refill is active. See the REFILL panel."
+            diagDetail = "Refill/results pause. Zero spare sets alone does not stop combat."
             diagShow("Paused for refill")
             return
         end
@@ -2236,7 +2243,7 @@ v3["13"].BackgroundColor3 = Color3.new(0, 1, 0)
 local bladeCountConnection
 local observedBladeLabel
 local function checkEmptyBlades()
-    if v4.bladeEnabled and not v4.refilling and readBladeCount(findBladeSets()) == 0 then
+    if v4.bladeEnabled and not v4.refilling and needsStationRefill() then
         requestRefill(false)
     end
 end
@@ -2253,8 +2260,10 @@ task.spawn(function()
         end
         if v4.bladeEnabled and not v4.refilling then
             local count, maximum = readBladeCount(label)
-            if count == 0 then
+            if count == 0 and equippedBladeVisible() == false then
                 requestRefill(false)
+            elseif count == 0 then
+                setRefillStatus("0 spare sets; equipped blade still visible or unverified. Combat remains enabled.")
             elseif count and count > 0 and v4.blade.Transparency == 1 and not reloadInFlight and os.clock() - lastBladeReload > 3 then
                 lastBladeReload = os.clock()
                 reloadInFlight = true
@@ -2277,7 +2286,7 @@ task.spawn(function()
             elseif count == nil then
                 setRefillStatus("Blade-count UI unavailable; automatic empty detection cannot run.")
             elseif os.clock() - lastRefillAttempt > 12 then
-                setRefillStatus("Watching " .. count .. "/" .. maximum .. "; automatic station trip at 0. No distance cap.")
+                setRefillStatus("Watching " .. count .. "/" .. maximum .. "; station trip when spare sets are 0 and equipped blades are hidden.")
             end
         end
         task.wait(0.5)
