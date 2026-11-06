@@ -1336,6 +1336,12 @@ local function stopAutoFarm(message)
     v4.oldfarmEnabled = false
     v4.autofarmEnabled = false
     v4.autoAttack = false
+    if v4.steadyHumanoid and v4.steadyHumanoid.Parent then
+        v4.steadyHumanoid.AutoRotate = v4.savedAutoRotate
+    end
+    v4.steadyHumanoid = nil
+    v4.steadyPosition = nil
+    v4.steadyTarget = nil
     v4.nape = nil
     v4.attackTarget = nil
     v4.teleportTarget = nil
@@ -1893,7 +1899,39 @@ local function v134()
                         velocity.MaxForce = Vector3.zero
                         velocity.Velocity = Vector3.zero
                     end
-                    root.CFrame = CFrame.lookAt(destination, target.Position, Vector3.new(0, 0, -1))
+                    local humanoid = root.Parent:FindFirstChildOfClass("Humanoid")
+                    if humanoid and v4.steadyHumanoid ~= humanoid then
+                        if v4.steadyHumanoid and v4.steadyHumanoid.Parent then
+                            v4.steadyHumanoid.AutoRotate = v4.savedAutoRotate
+                        end
+                        v4.steadyHumanoid = humanoid
+                        v4.savedAutoRotate = humanoid.AutoRotate
+                        humanoid.AutoRotate = false
+                        local look = root.CFrame.LookVector
+                        local flat = Vector3.new(look.X, 0, look.Z)
+                        v4.steadyLook = flat.Magnitude > 0.01 and flat.Unit or Vector3.new(0, 0, -1)
+                        v4.steadyPosition = nil
+                    end
+                    if not v4.steadyPosition or v4.steadyTarget ~= target
+                        or (destination - v4.steadyPosition).Magnitude > 12 then
+                        v4.steadyPosition = destination
+                        v4.steadyTarget = target
+                    end
+                    if not v4.farmHover or v4.farmHover.Parent ~= root then
+                        if v4.farmHover and v4.ownsFarmHover then v4.farmHover:Destroy() end
+                        local hover = Instance.new("BodyPosition")
+                        hover.Name = "YozakuraSteadyHover"
+                        hover.MaxForce = Vector3.new(1000000, 1000000, 1000000)
+                        hover.P = 10000
+                        hover.D = 1000
+                        hover.Position = v4.steadyPosition
+                        hover.Parent = root
+                        v4.farmHover = hover
+                        v4.ownsFarmHover = true
+                    end
+                    v4.farmHover.Position = v4.steadyPosition
+                    root.CFrame = CFrame.lookAt(v4.steadyPosition,
+                        v4.steadyPosition + (v4.steadyLook or Vector3.new(0, 0, -1)))
                     root.AssemblyLinearVelocity = Vector3.zero
                     root.AssemblyAngularVelocity = Vector3.zero
                     local gyro = root:FindFirstChild("BG")
@@ -1989,8 +2027,7 @@ local function v136() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         end)
         if not ok then
             v4.attackTarget = nil
-            v4.oldfarmEnabled = false
-            v3["4a"].BackgroundColor3 = Color3.new(1, 0, 0)
+            stopAutoFarm("Attack worker stopped: " .. tostring(err))
             diagDetail = "ERROR: " .. tostring(err)
             diagShow("Stopped after error")
             return
