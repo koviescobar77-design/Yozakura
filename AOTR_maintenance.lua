@@ -1884,7 +1884,7 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
             local delta = v126 - v4.root.Position
             local l_Unit_0 = delta.Magnitude > 0.01 and delta.Unit or v4.root.CFrame.LookVector;
             local l_Magnitude_2 = (v126 - v4.root.Position).Magnitude;
-            local v129 = math.min(l_Magnitude_2 * 5, 400);
+            local v129 = math.min(l_Magnitude_2 * 5, 500);
             if l_BV_0 then
                 l_BV_0.MaxForce = Vector3.new(5500, 5500, 5500);
                 l_BV_0.Velocity = l_Unit_0 * v129;
