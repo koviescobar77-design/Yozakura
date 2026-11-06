@@ -1338,6 +1338,7 @@ local function stopAutoFarm(message)
     v4.autoAttack = false
     v4.nape = nil
     v4.attackTarget = nil
+    v4.teleportTarget = nil
     v4.noTitanSince = nil
     v4.farmDeadline = nil
     v3["4a"].BackgroundColor3 = Color3.new(1, 0, 0)
@@ -1850,63 +1851,61 @@ v3["32"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         v2("Premium", "Feature locked, check discord.");
     end;
 end);
-local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
-    -- upvalues: v4 (ref), v46 (ref)
-    local existingHover = v4.root:FindFirstChild("BodyPosition")
-    local v122 = existingHover or Instance.new("BodyPosition", v4.root)
-    v4.farmHover = v122
-    v4.ownsFarmHover = existingHover == nil
-    v4.savedFarmHover = {force = v122.MaxForce, d = v122.D, p = v122.P}
-    v4.farmCollisions = v4.farmCollisions or {}
-    local existingVelocity = v4.root:FindFirstChild("BV")
-    if existingVelocity and existingVelocity:IsA("BodyVelocity") then v4.savedFarmForce = existingVelocity.MaxForce end
-    v122.MaxForce = Vector3.new(0, 1000, 0);
-    v122.D = 1000;
-    v122.P = 1000;
-    while v4.oldfarmEnabled and task.wait(0.05) do
-        if not v4.oldfarmEnabled then break end
-        if not refillBlocksCombat() then
-        if not v4.attackTarget or not v4.attackTarget.Parent then v46() end
-        if v4.attackTarget and v4.attackTarget.Parent then v4.nape = v4.attackTarget end
-        if not v4.oldfarmEnabled then break end
-        if not refillBlocksCombat() then
-        local v123 = 75;
-        if v4.titans:FindFirstChild("Attack_Titan") then
-            v123 = 195;
-        end;
-        if v4.nape ~= nil then
-            local l_BV_0 = v4.root:FindFirstChild("BV");
-            if l_BV_0 then
-                l_BV_0.MaxForce = Vector3.new(5500, 5500, 5500);
-            end;
-            local l_BG_0 = v4.root:FindFirstChild("BG");
-            local v126 = v4.nape.Position + Vector3.new(0, v123, 0);
-            local delta = v126 - v4.root.Position
-            local l_Unit_0 = delta.Magnitude > 0.01 and delta.Unit or v4.root.CFrame.LookVector;
-            local l_Magnitude_2 = (v126 - v4.root.Position).Magnitude;
-            local v129 = math.min(l_Magnitude_2 * 4, 300);
-            if l_BV_0 then
-                l_BV_0.MaxForce = Vector3.new(5500, 5500, 5500);
-                l_BV_0.Velocity = l_Unit_0 * v129;
-            end;
-            v122.Position = Vector3.new(v122.Position.X, v126.Y, v122.Position.Z);
-            if l_BG_0 then
-                l_BG_0.CFrame = CFrame.new(v4.root.Position, v4.root.Position + l_Unit_0);
-            end;
-            for _, v133 in pairs(v4.character:GetDescendants()) do
-                if v133:IsA("BasePart") and v133.CanCollide == true then
-                    if v4.farmCollisions[v133] == nil then v4.farmCollisions[v133] = v133.CanCollide end
-                    v133.CanCollide = false;
-                end;
-            end;
-        else
-            local velocity = v4.root:FindFirstChild("BV")
-            if velocity and velocity:IsA("BodyVelocity") then velocity.Velocity = Vector3.zero end
-        end;
-        end -- post-selection refill check
-        end -- refill pause
-    end;
-end;
+local function livingTarget(target)
+    if not target or not target.Parent or not target:IsDescendantOf(v4.titans) then return false end
+    local ancestor = target.Parent
+    while ancestor and ancestor ~= v4.titans do
+        local humanoid = ancestor:FindFirstChildOfClass("Humanoid")
+        if humanoid then return humanoid.Health > 0 end
+        ancestor = ancestor.Parent
+    end
+    return false
+end
+local selectingTarget = false
+local function selectLockedTarget()
+    if livingTarget(v4.teleportTarget) then
+        v4.nape = v4.teleportTarget
+        return v4.teleportTarget
+    end
+    v4.teleportTarget = nil
+    if selectingTarget then return nil end
+    selectingTarget = true
+    local ok, err = pcall(v46)
+    selectingTarget = false
+    if not ok then error(err) end
+    if livingTarget(v4.nape) then v4.teleportTarget = v4.nape end
+    return v4.teleportTarget
+end
+local function v134()
+    if v4.teleportWorkerRunning then return end
+    v4.teleportWorkerRunning = true
+    local ok, err = pcall(function()
+        while v4.oldfarmEnabled do
+            if not refillBlocksCombat() then
+                local target = selectLockedTarget()
+                local root = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if root and livingTarget(target) and v4.oldfarmEnabled and not refillBlocksCombat() then
+                    v4.root = root
+                    local destination = target.Position + Vector3.new(0, 75, 0)
+                    local velocity = root:FindFirstChild("BV")
+                    if velocity and velocity:IsA("BodyVelocity") then
+                        if v4.savedFarmForce == nil then v4.savedFarmForce = velocity.MaxForce end
+                        velocity.MaxForce = Vector3.zero
+                        velocity.Velocity = Vector3.zero
+                    end
+                    root.CFrame = CFrame.lookAt(destination, target.Position, Vector3.new(0, 0, -1))
+                    root.AssemblyLinearVelocity = Vector3.zero
+                    root.AssemblyAngularVelocity = Vector3.zero
+                    local gyro = root:FindFirstChild("BG")
+                    if gyro and gyro:IsA("BodyGyro") then gyro.CFrame = root.CFrame end
+                end
+            end
+            task.wait(0.1)
+        end
+    end)
+    v4.teleportWorkerRunning = false
+    if not ok then stopAutoFarm("Teleport movement stopped: " .. tostring(err)) end
+end
 -- Local diagnostics only: no external reporting.
 local diagCount = 0
 local diagDetail = ""
@@ -1965,7 +1964,7 @@ local function v136() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         end
 
         diagShow("Finding target")
-        v46();
+        v4.nape = selectLockedTarget();
         if not v4.autoAttack then task.wait(0.05) end
         diagShow("Checking target distance")
         if v4.nape ~= nil then
