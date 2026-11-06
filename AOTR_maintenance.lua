@@ -680,7 +680,7 @@ v3["68"].Size = UDim2.new(1, 0, 0.99786, 0);
 v3["68"].BackgroundTransparency = 0.5;
 v3["68"].Name = "discordButton";
 v3["68"].BorderColor3 = Color3.fromRGB(0, 0, 0);
-v3["68"].Text = "https://discord.gg/CXFxhXShwt";
+v3["68"].Text = "https://discord.gg/4dDnseEkwy";
 v3["68"].Position = UDim2.new(-0.00606, 0, -0.02112, 0);
 v3["69"] = Instance.new("UICorner", v3["68"]);
 v3["69"].CornerRadius = UDim.new(0, 16);
@@ -807,9 +807,9 @@ v3["103"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
 end);
 v3["68"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v2 (ref)
-    print("https://discord.gg/CXFxhXShwt");
+    print("https://discord.gg/4dDnseEkwy");
     if type(setclipboard) ~= "function" then v2("Clipboard", "Clipboard is unavailable"); return end
-    setclipboard("https://discord.gg/CXFxhXShwt");
+    setclipboard("https://discord.gg/4dDnseEkwy");
     v2("Discord", "Link copied to clipboard", 5);
 end);
 task.spawn(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
@@ -972,20 +972,12 @@ local v4 = {
 -- One refill owner pauses movement/attacks until completion or timeout.
 v4.refilling = false
 v4.autoAttack = false
-local refillStatus = Instance.new("TextLabel")
-refillStatus.Size = UDim2.new(0.42, 0, 0, 58)
-refillStatus.Position = UDim2.new(0.02, 0, 0.15, 226)
-refillStatus.BackgroundColor3 = Color3.fromRGB(25, 32, 40)
-refillStatus.TextColor3 = Color3.new(1, 1, 1)
-refillStatus.TextSize = 15
-refillStatus.TextWrapped = true
-refillStatus.Parent = v3["1"]
+local lastRefillMessage
 local function setRefillStatus(message)
-    if refillStatus.Text == "REFILL: " .. message then return end
-    refillStatus.Text = "REFILL: " .. message
+    if lastRefillMessage == message then return end
+    lastRefillMessage = message
     print("[Yozakura refill] " .. message)
 end
-setRefillStatus("Idle. Main > Auto Refill enables automatic blade replenishment.")
 local lastRefillAttempt = -math.huge
 local function equippedBladeVisible()
     local character = localPlayer.Character
@@ -1914,77 +1906,11 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     end;
 end;
 -- Local diagnostics only: no external reporting.
-local diagPanel = Instance.new("TextLabel")
-diagPanel.Name = "YozakuraDiagnostics"
-diagPanel.Size = UDim2.new(0.42, 0, 0, 180)
-diagPanel.Position = UDim2.new(0.02, 0, 0.15, 0)
-diagPanel.BackgroundColor3 = Color3.fromRGB(20, 23, 30)
-diagPanel.BackgroundTransparency = 0.1
-diagPanel.TextColor3 = Color3.new(1, 1, 1)
-diagPanel.TextSize = 15
-diagPanel.TextWrapped = true
-diagPanel.TextXAlignment = Enum.TextXAlignment.Left
-diagPanel.TextYAlignment = Enum.TextYAlignment.Top
-diagPanel.Parent = v3["1"]
 local diagCount = 0
-local diagDetail = "Enable Testing > VIP Autofarm"
+local diagDetail = ""
 local function diagShow(stage)
-    local target = v4.nape
-    local distance = "none"
-    if target and target:IsA("BasePart") and v4.root and v4.root.Parent then
-        distance = string.format("%.1f studs", (v4.root.Position - target.Position).Magnitude)
-    end
-    diagPanel.Text = "YOZAKURA DIAGNOSTICS 22\nStage: " .. stage
-        .. "\nTarget: " .. (target and target:GetFullName() or "none")
-        .. "\nDistance: " .. distance
-        .. "\nAttack calls attempted: " .. tostring(diagCount)
-        .. "\n" .. diagDetail
+    -- Screen diagnostics removed; gameplay does not depend on this display.
 end
-diagShow("Idle")
-local teleportButton = Instance.new("TextButton")
-teleportButton.Name = "TeleportNearTitan"
-teleportButton.Size = UDim2.new(0.42, 0, 0, 36)
-teleportButton.Position = UDim2.new(0.02, 0, 0.15, 186)
-teleportButton.BackgroundColor3 = Color3.fromRGB(45, 75, 110)
-teleportButton.TextColor3 = Color3.new(1, 1, 1)
-teleportButton.TextSize = 16
-teleportButton.Text = "Teleport near titan (12 studs)"
-teleportButton.Parent = v3["1"]
-local teleportBusy = false
-teleportButton.Activated:Connect(function()
-    if teleportBusy or refillBlocksCombat() then return end
-    teleportBusy = true
-    local ok, err = pcall(function()
-        v4.nape = nil
-        v46()
-        local target = v4.nape
-        local character = localPlayer.Character
-        local root = character and character:FindFirstChild("HumanoidRootPart")
-        if not target or not target:IsA("BasePart") or not target:IsDescendantOf(workspace) then
-            error("No available titan nape was found.", 0)
-        end
-        if not root or not root:IsA("BasePart") then
-            error("Player root is unavailable.", 0)
-        end
-        local destination = (target.CFrame * CFrame.new(0, 0, 12)).Position
-        v4.nearTarget = true
-        root.CFrame = CFrame.lookAt(destination, target.Position)
-        root.AssemblyLinearVelocity = Vector3.zero
-        root.AssemblyAngularVelocity = Vector3.zero
-        local hover = root:FindFirstChild("BodyPosition")
-        if hover and hover:IsA("BodyPosition") then hover.Position = destination end
-        local velocity = root:FindFirstChild("BV")
-        if velocity and velocity:IsA("BodyVelocity") then velocity.Velocity = Vector3.zero end
-        diagDetail = "Requested teleport 12 studs from nape; VIP movement now follows this near offset."
-        diagShow("Teleport requested")
-    end)
-    if not ok then
-        diagDetail = "Teleport error: " .. tostring(err)
-        diagShow("Teleport failed")
-    end
-    teleportBusy = false
-end)
-
 local function diagHit(...)
     diagCount = diagCount + 1
     diagShow("Waiting for attack call to return")
@@ -1998,120 +1924,6 @@ local function diagHit(...)
     diagShow("Attack call returned")
     return result
 end
-
--- Read-only health observation, separate from requested attack counts.
-local healthPanel = Instance.new("TextLabel")
-healthPanel.Name = "ObservedTitanHealth"
-healthPanel.Size = UDim2.new(0.42, 0, 0, 100)
-healthPanel.Position = UDim2.new(0.55, 0, 0.03, 0)
-healthPanel.BackgroundColor3 = Color3.fromRGB(20, 23, 30)
-healthPanel.TextColor3 = Color3.new(1, 1, 1)
-healthPanel.TextWrapped = true
-healthPanel.TextSize = 16
-healthPanel.Text = "HP TEST: Waiting for an attack target."
-healthPanel.Parent = v3["1"]
-local observedHumanoid, observedStartHP, observedAt, observedDeathAt
-local function observeTarget(humanoid)
-    if observedHumanoid ~= humanoid then
-        observedHumanoid = humanoid
-        observedStartHP = humanoid.Health
-        observedAt = os.clock()
-        observedDeathAt = nil
-    end
-end
-task.spawn(function()
-    while v3["1"].Parent do
-        task.wait(0.1)
-        if observedHumanoid then
-            if observedHumanoid.Parent then
-                local hp = observedHumanoid.Health
-                if hp <= 0 and not observedDeathAt then observedDeathAt = os.clock() end
-                local elapsed = (observedDeathAt or os.clock()) - observedAt
-                healthPanel.Text = string.format(
-                    "HP TEST: %.0f -> %.0f | Net HP drop: %.0f\n%.2fs since first observed attempt | %s\nObserved health only; damage source is unverified.",
-                    observedStartHP, hp, observedStartHP - hp, elapsed,
-                    hp <= 0 and "DEATH OBSERVED" or "ALIVE")
-            elseif not observedDeathAt then
-                healthPanel.Text = "HP TEST: Target removed. Death/time could not be confirmed."
-            end
-        end
-    end
-end)
-local scanButton = Instance.new("TextButton")
-scanButton.Size = UDim2.new(0.42, 0, 0, 36)
-scanButton.Position = UDim2.new(0.02, 0, 0.15, 290)
-scanButton.Text = "Scan refill here (read-only)"
-scanButton.TextSize = 16
-scanButton.BackgroundColor3 = Color3.fromRGB(45, 75, 110)
-scanButton.TextColor3 = Color3.new(1, 1, 1)
-scanButton.Parent = v3["1"]
-local reportFrame = Instance.new("Frame")
-reportFrame.Size = UDim2.fromScale(0.85, 0.72)
-reportFrame.Position = UDim2.fromScale(0.075, 0.14)
-reportFrame.BackgroundColor3 = Color3.fromRGB(20, 23, 30)
-reportFrame.Visible = false
-reportFrame.ZIndex = 20
-reportFrame.Parent = v3["1"]
-local closeReport = Instance.new("TextButton")
-closeReport.Size = UDim2.new(1, 0, 0, 36)
-closeReport.Text = "REFILL REPORT — select/copy text below, or take a screenshot — CLOSE"
-closeReport.TextSize = 16
-closeReport.ZIndex = 21
-closeReport.Parent = reportFrame
-closeReport.Activated:Connect(function() reportFrame.Visible = false end)
-local reportText = Instance.new("TextBox")
-reportText.Size = UDim2.new(1, -16, 1, -44)
-reportText.Position = UDim2.fromOffset(8, 40)
-reportText.MultiLine = true
-reportText.ClearTextOnFocus = false
-reportText.TextEditable = false
-reportText.TextWrapped = true
-reportText.TextSize = 14
-reportText.TextColor3 = Color3.new(1, 1, 1)
-reportText.BackgroundTransparency = 1
-reportText.TextXAlignment = Enum.TextXAlignment.Left
-reportText.TextYAlignment = Enum.TextYAlignment.Top
-reportText.ZIndex = 21
-reportText.Parent = reportFrame
-scanButton.Activated:Connect(function()
-    local lines = {"REFILL SCAN: stand beside the tanks where [R] appears."}
-    local station = resolveRefill()
-    table.insert(lines, station and ("Resolved: " .. station.method .. " | " .. station.part:GetFullName())
-        or "Resolved: NONE")
-    local matches = 0
-    local function add(text)
-        matches = matches + 1
-        if matches <= 16 then table.insert(lines, text) end
-    end
-    local function scan(container)
-        if not container then return end
-        for _, item in ipairs(container:GetDescendants()) do
-            if item:IsDescendantOf(v3["1"]) then
-                -- Exclude our own diagnostics.
-            elseif item:IsA("TextLabel") or item:IsA("TextButton") then
-                if item.Text:lower():find("refill", 1, true) then
-                    local part = refillLabelPart(item)
-                    add("TEXT " .. item:GetFullName() .. " = " .. item.Text
-                        .. " | anchor: " .. (part and part:GetFullName() or "NONE"))
-                end
-            elseif item:IsA("ProximityPrompt") then
-                local parent = item.Parent
-                local part = parent and (parent:IsA("Attachment") and parent.Parent or parent)
-                local root = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
-                if root and part and part:IsA("BasePart") and (root.Position - part.Position).Magnitude < 30 then
-                    add("NEAR PROMPT " .. item:GetFullName() .. " | " .. item.ActionText .. " | " .. item.ObjectText)
-                end
-            end
-        end
-    end
-    scan(workspace)
-    scan(localPlayer:FindFirstChildOfClass("PlayerGui"))
-    if matches == 0 then table.insert(lines, "No refill text or nearby prompt found. Keep the station's [R] label visible and scan again.") end
-    if matches > 16 then table.insert(lines, "Extra matches omitted: " .. tostring(matches - 16)) end
-    reportText.Text = table.concat(lines, "\n")
-    reportFrame.Visible = true
-    print(reportText.Text)
-end)
 
 local nextHitAt = 0
 local function hitBurst(target, maxDistance)
@@ -2131,7 +1943,6 @@ local function hitBurst(target, maxDistance)
         end
         if not humanoid or humanoid.Health <= 0 then break end
         if (v4.root.Position - target.Position).Magnitude > maxDistance then break end
-        observeTarget(humanoid)
         nextHitAt = os.clock() + 0.1
         diagHit("Hitboxes", "Register", target, math.random(215, 230), math.random(10, 100))
         sent = sent + 1
