@@ -1383,7 +1383,7 @@ local v4 = {
     UIInitialPos = v3["2"].Position,
     extendMulti = 1, 
     extendEnabled = false, 
-    napeVisible = true, 
+    napeVisible = false, 
     espEnabled = false, 
     bladeEnabled = false, 
     injuryEnabled = false, 
@@ -1626,7 +1626,8 @@ if type(v19.extendEnabled) == type(v4.extendEnabled) then v4.extendEnabled = v19
 if type(v19.escapeEnabled) == type(v4.escapeEnabled) then v4.escapeEnabled = v19.escapeEnabled end;
 if type(v19.bladeEnabled) == type(v4.bladeEnabled) then v4.bladeEnabled = v19.bladeEnabled end;
 if type(v19.extendMulti) == type(v4.extendMulti) then v4.extendMulti = v19.extendMulti end;
-if type(v19.napeVisible) == type(v4.napeVisible) then v4.napeVisible = v19.napeVisible end;
+-- Start with clean visuals even if an older config saved visible napes.
+v4.napeVisible = false;
 if type(v19.erenExtend) == type(v4.erenExtend) then v4.erenExtend = v19.erenExtend end;
 if type(v19.injuryEnabled) == type(v4.injuryEnabled) then v4.injuryEnabled = v19.injuryEnabled end;
 if type(v19.ripperEnabled) == type(v4.ripperEnabled) then v4.ripperEnabled = v19.ripperEnabled end;
@@ -2005,12 +2006,12 @@ local function v61() -- Refresh the current mode's regular-Titan extension.
                         l_Nape_1.Size = Vector3.new(60, 60, 60) * multiplier;
                         l_Nape_1.Color = Color3.new(1, 1, 1);
                         l_Nape_1.Material = Enum.Material.Neon;
-                        l_Nape_1.Transparency = 0.96;
+                        l_Nape_1.Transparency = v4.napeVisible and 0.96 or 1;
                     elseif not v4.erenExtend then
                         l_Nape_1.Size = Vector3.new(60, 60, 60) * multiplier;
                         l_Nape_1.Color = Color3.new(1, 1, 1);
                         l_Nape_1.Material = Enum.Material.Neon;
-                        l_Nape_1.Transparency = 0.96;
+                        l_Nape_1.Transparency = v4.napeVisible and 0.96 or 1;
                     end;
                 end;
             end;
@@ -2076,8 +2077,8 @@ if v4.extendEnabled == true then
 end;
 if not v4.napeVisible then
     for _, v69 in pairs(v4.titans:GetChildren()) do
-        local l_Nape_5 = v69.Hitboxes.Hit:FindFirstChild("Nape");
-        if l_Nape_5 then
+        local l_Nape_5 = findPath(v69, {"Hitboxes", "Hit", "Nape"});
+        if l_Nape_5 and l_Nape_5:IsA("BasePart") then
             l_Nape_5.Transparency = 1;
         end;
     end;
@@ -2505,7 +2506,7 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
             local l_Unit_0 = delta.Magnitude > 0.01 and delta.Unit or v4.root.CFrame.LookVector;
             local l_Magnitude_2 = (v126 - v4.root.Position).Magnitude;
             local speedGain = v4.autofarmEnabled and 8 or 5
-            local speedLimit = v4.autofarmEnabled and 800 or 500
+            local speedLimit = v4.autofarmEnabled and 1000 or 500
             local v129 = math.min(l_Magnitude_2 * speedGain, speedLimit);
             if l_BV_0 then
                 l_BV_0.MaxForce = Vector3.one * (v4.autofarmEnabled and 9000 or 5500);
