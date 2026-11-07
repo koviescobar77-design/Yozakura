@@ -1927,35 +1927,53 @@ local function diagHit(...)
     return result
 end
 
+-- Local scheduling and validation only; these are not server damage/crit stats.
+local CombatConfig = {
+    AttackInterval = 0.1,
+    AttemptsPerBurst = 10,
+    RegularRange = 175,
+    BossRange = 250,
+}
+local CombatManager = {}
+function CombatManager.CanAttack(target, maxDistance)
+    local character = localPlayer.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root or not root:IsA("BasePart") then return false end
+    if not target or not target:IsA("BasePart") or not target.Parent then return false end
+    if not v4.titans or not target:IsDescendantOf(v4.titans) then return false end
+    local ancestor = target.Parent
+    local humanoid
+    while ancestor and ancestor ~= v4.titans do
+        humanoid = ancestor:FindFirstChildOfClass("Humanoid")
+        if humanoid then break end
+        ancestor = ancestor.Parent
+    end
+    if not humanoid or humanoid.Health <= 0 then return false end
+    if (root.Position - target.Position).Magnitude > maxDistance then return false end
+    v4.root = root
+    return true
+end
 local nextHitAt = 0
 local function hitBurst(target, maxDistance)
     v4.attackTarget = target
     local sent = 0
-    for hit = 1, 10 do
+    for hit = 1, CombatConfig.AttemptsPerBurst do
         local delay = nextHitAt - os.clock()
         if delay > 0 then task.wait(delay) end
         if not v4.oldfarmEnabled or refillBlocksCombat() then break end
-        if not target or not target.Parent or not target:IsDescendantOf(v4.titans) then break end
-        if not v4.root or not v4.root.Parent then break end
-        local ancestor = target.Parent
-        local humanoid
-        while ancestor and ancestor ~= v4.titans do
-            humanoid = ancestor:FindFirstChildOfClass("Humanoid")
-            if humanoid then break end
-            ancestor = ancestor.Parent
-        end
-        if not humanoid or humanoid.Health <= 0 then break end
-        if (v4.root.Position - target.Position).Magnitude > maxDistance then break end
-        nextHitAt = os.clock() + 0.1
+        if not CombatManager.CanAttack(target, maxDistance) then break end
+        nextHitAt = os.clock() + CombatConfig.AttackInterval
         diagHit("Hitboxes", "Register", target, math.random(215, 230), math.random(10, 100))
         sent = sent + 1
-
     end
     v4.attackTarget = nil
-    diagDetail = "Burst attempts sent: " .. sent .. "/10 (accepted hits are unverified)"
+    diagDetail = "Burst attempts sent: " .. sent .. "/" .. CombatConfig.AttemptsPerBurst
+        .. " (accepted hits are unverified)"
     diagShow(refillBlocksCombat() and "Paused for refill" or "Burst finished")
 end
-local function v136() --[[ Line: 67 ]] --[[ Name: 25ms ]]
+local function v136() -- One attack worker, independent of frame rate.
+    if v4.combatWorkerRunning then return end
+    v4.combatWorkerRunning = true
     -- upvalues: v4 (ref), v46 (ref)
     local function iteration()
         if refillBlocksCombat() then
@@ -1968,19 +1986,13 @@ local function v136() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         v46();
         if not v4.autoAttack then task.wait(0.05) end
         diagShow("Checking target distance")
-        if v4.nape ~= nil then
-            if missionTitans:FindFirstChild("Attack_Titan") then
-                if (v4.root.Position - v4.nape.Position).Magnitude <= 250 then
-                    diagShow("Sending slash request");
-                    if not v4.autoAttack then v4.remotePost:FireServer("Attacks", "Slash", true) end;
-                    hitBurst(v4.nape, 250);
-                end;
-            elseif (v4.root.Position - v4.nape.Position).Magnitude <= 175 then
-                diagShow("Sending slash request");
-                    if not v4.autoAttack then v4.remotePost:FireServer("Attacks", "Slash", true) end;
-                hitBurst(v4.nape, 175);
-            end;
-        end;
+        local target = v4.nape
+        local range = missionTitans:FindFirstChild("Attack_Titan")
+            and CombatConfig.BossRange or CombatConfig.RegularRange
+        if v4.oldfarmEnabled and not refillBlocksCombat() and CombatManager.CanAttack(target, range) then
+            if not v4.autoAttack then v4.remotePost:FireServer("Attacks", "Slash", true) end
+            hitBurst(target, range)
+        end
         if not v4.autoAttack then task.wait(0.05) end
     end
     while v4.oldfarmEnabled do
@@ -1989,6 +2001,7 @@ local function v136() --[[ Line: 67 ]] --[[ Name: 25ms ]]
             return tostring(message)
         end)
         if not ok then
+            v4.combatWorkerRunning = false
             v4.attackTarget = nil
             v4.oldfarmEnabled = false
             v3["4a"].BackgroundColor3 = Color3.new(1, 0, 0)
@@ -1996,9 +2009,10 @@ local function v136() --[[ Line: 67 ]] --[[ Name: 25ms ]]
             diagShow("Stopped after error")
             return
         end
-        local targetInterval = v4.autoAttack and 0.1 or 1
+        local targetInterval = v4.autoAttack and CombatConfig.AttackInterval or 1
         task.wait(math.max(0.01, targetInterval - (os.clock() - iterationStarted)))
     end
+    v4.combatWorkerRunning = false
     diagShow("Stopped")
 end
 if v4.oldfarmEnabled then
