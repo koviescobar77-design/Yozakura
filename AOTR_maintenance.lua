@@ -1920,6 +1920,7 @@ local function hasLivingTitans()
     return false
 end
 local function stopAutoFarm(message, preserveConfig)
+    v4.inputGeneration = (v4.inputGeneration or 0) + 1
     if not preserveConfig then v4.pendingFarmMode = nil end
     v4.oldfarmEnabled = false
     v4.autofarmEnabled = false
@@ -2458,64 +2459,7 @@ v3["2b"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         v3["2b"].BackgroundColor3 = Color3.new(1, 0, 0);
     end;
 end);
--- Skill 1: use detected readiness; otherwise send One once per second.
-do
-    local nextPressAt, inputBlocked, reportedFallback = 0, false, false
-    local function readSlotCooldown()
-        local hotbar = findPath(localPlayer, {"PlayerGui", "Interface", "HUD", "Main", "Top", "Hotbar"})
-        if not hotbar then return nil end
-        local slot
-        for _, child in ipairs(hotbar:GetChildren()) do
-            if child.Name:lower():match("^skill[%s_]*1$") then
-                if slot then return nil end
-                slot = child
-            end
-        end
-        local cooldown = slot and slot:FindFirstChild("Cooldown", true)
-        if not cooldown or not cooldown:IsA("GuiObject") then return nil end
-        local ancestor = slot
-        while ancestor and ancestor ~= localPlayer do
-            if ancestor:IsA("GuiObject") and not ancestor.Visible then return nil end
-            if ancestor:IsA("ScreenGui") and not ancestor.Enabled then return nil end
-            ancestor = ancestor.Parent
-        end
-        return cooldown.Visible
-    end
-    task.spawn(function()
-        while v3["1"].Parent do
-            task.wait(0.1)
-            if not v4.autofarmEnabled then
-                nextPressAt, inputBlocked, reportedFallback = 0, false, false
-            elseif not inputBlocked then
-                local cooling = readSlotCooldown()
-                if cooling == nil and not reportedFallback then
-                    reportedFallback = true
-                    v2("Slot 1 auto-click", "Cooldown unavailable: key 1 will be sent once per second while OP Farm is active.", 6)
-                elseif cooling ~= nil then
-                    reportedFallback = false
-                end
-                local character = localPlayer.Character
-                local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-                if cooling ~= true and os.clock() >= nextPressAt
-                    and humanoid and humanoid.Health > 0
-                    and not refillBlocksCombat() and not missionResults()
-                    and not v4.UIP:GetFocusedTextBox() then
-                    nextPressAt = os.clock() + 1
-                    local ok, err = pcall(function()
-                        v4.VIM:SendKeyEvent(true, Enum.KeyCode.One, false, game)
-                        task.wait(0.08)
-                        v4.VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game)
-                    end)
-                    if not ok then
-                        pcall(function() v4.VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game) end)
-                        inputBlocked = true
-                        v2("Skill input unavailable", tostring(err) .. ". Toggle OP off/on to retry.", 8)
-                    end
-                end
-            end
-        end
-    end)
-end
+-- Skill 1 is sequenced with M1 by the single input worker below.
 local startFarmWorkers
 local function farmActive()
     return v4.oldfarmEnabled or v4.autofarmEnabled
@@ -2531,6 +2475,7 @@ end;
 v3["32"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref), v3 (ref), v108 (ref), v2 (ref)
     if v4.passed then
+        v4.inputGeneration = (v4.inputGeneration or 0) + 1
         v4.autofarmEnabled = not v4.autofarmEnabled;
         v4.centerClickFailed = false
         if v4.autofarmEnabled then
@@ -2839,6 +2784,7 @@ if farmActive() then
 end;
 v3["4a"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref), v134 (ref), v136 (ref), v3 (ref)
+    v4.inputGeneration = (v4.inputGeneration or 0) + 1
     v4.oldfarmEnabled = not v4.oldfarmEnabled
     if v4.oldfarmEnabled then
         v4.autofarmEnabled = false
@@ -2870,19 +2816,50 @@ local function clickOnce()
     vim:SendMouseButtonEvent(position.X, position.Y, 0, false, game, 0)
     return true
 end
+-- OP: M1 -> 0.4s -> slot 1 -> 0.4s. WIP retains its M1-only loop.
+local function farmInputAllowed()
+    local character = localPlayer.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    return v3["1"].Parent and farmActive() and not v4.centerClickFailed
+        and humanoid and humanoid.Health > 0
+        and not v4.UIP:GetFocusedTextBox() and not refillBlocksCombat()
+end
 task.spawn(function()
     while v3["1"].Parent do
         local started = os.clock()
+        local opCycle = v4.autofarmEnabled
+        local generation = v4.inputGeneration or 0
+        local sentSkill = false
         v4.autoAttack = farmActive() and not v4.centerClickFailed
-        if v4.autoAttack and not refillBlocksCombat() then
+        if farmInputAllowed() then
             local ok, clicked = pcall(clickOnce)
             if not ok then
                 v4.centerClickFailed = true
                 v4.autoAttack = false
-                v2("Center input unavailable", tostring(clicked), 8)
+                v2("M1 input unavailable", tostring(clicked), 8)
+            elseif clicked and opCycle then
+                task.wait(0.4)
+                if generation == (v4.inputGeneration or 0) and v4.autofarmEnabled and farmInputAllowed() then
+                    local skillOK, err = pcall(function()
+                        v4.VIM:SendKeyEvent(true, Enum.KeyCode.One, false, game)
+                        task.wait(0.05)
+                        v4.VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game)
+                    end)
+                    if not skillOK then
+                        pcall(function() v4.VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game) end)
+                        v4.centerClickFailed = true
+                        v4.autoAttack = false
+                        v2("Skill 1 input unavailable", tostring(err) .. ". Toggle OP off/on to retry.", 8)
+                    end
+                    sentSkill = true
+                end
             end
         end
-        task.wait(math.max(0.01, attackInterval() - (os.clock() - started)))
+        if sentSkill then
+            task.wait(0.4)
+        else
+            task.wait(math.max(0.01, attackInterval() - (os.clock() - started)))
+        end
     end
     v4.autoAttack = false
 end)
