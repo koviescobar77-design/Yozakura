@@ -2459,7 +2459,7 @@ v3["2b"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         v3["2b"].BackgroundColor3 = Color3.new(1, 0, 0);
     end;
 end);
--- Ready skill keys 1 and 2 share a pause with both attack workers below.
+-- Ready skill icons 1 and 2 share a pause with both attack workers below.
 local startFarmWorkers
 local function farmActive()
     return v4.oldfarmEnabled or v4.autofarmEnabled
@@ -2855,8 +2855,9 @@ local function readySkill()
                 if parent:IsA("ScreenGui") and not parent.Enabled then shown = false break end
                 parent = parent.Parent
             end
+            if cooldown.Visible then skillAttempts[slot] = nil end
             local last = skillAttempts[slot] or -math.huge
-            if shown and not cooldown.Visible and os.clock() - last >= 5
+            if shown and not cooldown.Visible and os.clock() - last >= 2
                 and (not best or last < best.last or (last == best.last and number < best.number)) then
                 best = {slot = slot, cooldown = cooldown, key = skillKeys[number], number = number, last = last}
             end
@@ -2867,30 +2868,54 @@ end
 local function useReadySkill(skill, generation)
     v4.skillCasting = true
     v4.autoAttack = false
+    local pressedAt
     local ok, err = pcall(function()
-        -- Let an already-sent attack finish before sending any skill key.
         local deadline = os.clock() + 2
         while v4.attackCallInFlight and os.clock() < deadline do task.wait(0.05) end
         if v4.attackCallInFlight then return end
         task.wait(0.4)
-        if generation ~= (v4.inputGeneration or 0) or not v4.autofarmEnabled
-            or not farmInputAllowed() or not skill.cooldown.Parent or skill.cooldown.Visible then return end
         skillAttempts[skill.slot] = os.clock()
-        v4.VIM:SendKeyEvent(true, skill.key, false, game)
-        task.wait(0.08)
-        v4.VIM:SendKeyEvent(false, skill.key, false, game)
-        -- Keep attacks paused while waiting for the HUD to acknowledge the cast.
-        local acknowledgeBy = os.clock() + 0.8
-        while skill.cooldown.Parent and not skill.cooldown.Visible and os.clock() < acknowledgeBy
-            and generation == (v4.inputGeneration or 0) and farmInputAllowed() do
+        -- Click the live slot position; never hard-code screenshot coordinates.
+        -- A bounded burst avoids permanently starving M1 if the HUD does not respond.
+        for attempt = 1, 3 do
+            if generation ~= (v4.inputGeneration or 0) or not v4.autofarmEnabled
+                or not farmInputAllowed() or not skill.slot.Parent
+                or not skill.cooldown.Parent or skill.cooldown.Visible then break end
+            local slot = skill.slot
+            if not slot:IsA("GuiObject") or slot.AbsoluteSize.X <= 0 or slot.AbsoluteSize.Y <= 0 then break end
+            local shown = true
+            local ancestor = slot
+            while ancestor and ancestor ~= localPlayer do
+                if ancestor:IsA("GuiObject") and not ancestor.Visible then shown = false break end
+                if ancestor:IsA("ScreenGui") and not ancestor.Enabled then shown = false break end
+                ancestor = ancestor.Parent
+            end
+            if not shown then break end
+            local point = slot.AbsolutePosition + slot.AbsoluteSize * 0.5
+            local gui = localPlayer:FindFirstChildOfClass("PlayerGui")
+            local objects = gui and gui:GetGuiObjectsAtPosition(point.X, point.Y) or {}
+            local top = objects[1]
+            if not top or not (top == slot or top:IsDescendantOf(slot)) then break end
+            pressedAt = point
+            v4.VIM:SendMouseButtonEvent(point.X, point.Y, 0, true, game, 0)
             task.wait(0.05)
+            v4.VIM:SendMouseButtonEvent(point.X, point.Y, 0, false, game, 0)
+            pressedAt = nil
+            task.wait(0.15)
+        end
+        if skill.cooldown.Parent and skill.cooldown.Visible then
+            skillAttempts[skill.slot] = nil
         end
         task.wait(0.4)
     end)
-    pcall(function() v4.VIM:SendKeyEvent(false, skill.key, false, game) end)
+    -- Release even if the click or GUI lookup failed.
+    if pressedAt then
+        pcall(function()
+            v4.VIM:SendMouseButtonEvent(pressedAt.X, pressedAt.Y, 0, false, game, 0)
+        end)
+    end
     v4.skillCasting = false
     v4.autoAttack = farmInputAllowed() and not v4.centerClickFailed
-    -- Guarantee an attack window between skills, including unsuccessful casts.
     nextSkillCheckAt = os.clock() + 0.8
     if not ok then
         skillAttempts[skill.slot] = os.clock()
