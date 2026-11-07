@@ -2459,7 +2459,7 @@ v3["2b"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         v3["2b"].BackgroundColor3 = Color3.new(1, 0, 0);
     end;
 end);
--- Skill keys 1 and 2 alternate in the single M1 input worker below.
+-- Ready skill keys 1 and 2 share a pause with both attack workers below.
 local startFarmWorkers
 local function farmActive()
     return v4.oldfarmEnabled or v4.autofarmEnabled
@@ -2647,7 +2647,11 @@ end
 local function diagHit(...)
     diagCount = diagCount + 1
     diagShow("Waiting for attack call to return")
-    local result = v4.remoteGet:InvokeServer(...)
+    if v4.skillCasting then return nil end
+    v4.attackCallInFlight = true
+    local ok, result = pcall(v4.remoteGet.InvokeServer, v4.remoteGet, ...)
+    v4.attackCallInFlight = false
+    if not ok then error(result) end
     local kind = type(result)
     local summary = kind
     if kind == "string" or kind == "number" or kind == "boolean" or kind == "nil" then
@@ -2671,6 +2675,7 @@ local function attackInterval()
 end
 local CombatManager = {}
 function CombatManager.CanAttack(target, maxDistance)
+    if v4.skillCasting then return false end
     local character = localPlayer.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
     if not root or not root:IsA("BasePart") then return false end
@@ -2803,6 +2808,7 @@ v3["4a"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     end;
 end);
 local function clickOnce()
+    if v4.skillCasting then return false end
     local input = game:GetService("UserInputService")
     if input:GetFocusedTextBox() then return false end
     local camera = workspace.CurrentCamera
@@ -2819,8 +2825,7 @@ local function clickOnce()
     vim:SendMouseButtonEvent(position.X, position.Y, 0, false, game, 0)
     return true
 end
--- OP: M1, pause, press alternating skill keys 1/2, then resume M1.
--- A blocked/failed mouse input must never disable keyboard skill input.
+-- Skill readiness pauses BOTH M1 and the separate attack worker.
 local function farmInputAllowed()
     local character = localPlayer.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -2828,49 +2833,94 @@ local function farmInputAllowed()
         and humanoid and humanoid.Health > 0
         and not v4.UIP:GetFocusedTextBox() and not refillBlocksCombat()
 end
-local nextSkillKey = Enum.KeyCode.One
+local skillAttempts = setmetatable({}, {__mode = "k"})
+local skillKeys = {Enum.KeyCode.One, Enum.KeyCode.Two}
+local nextSkillCheckAt = 0
+local function readySkill()
+    local hotbar = findPath(localPlayer, {"PlayerGui", "Interface", "HUD", "Main", "Top", "Hotbar"})
+    if not hotbar then return nil end
+    local best
+    for _, slot in ipairs(hotbar:GetChildren()) do
+        local number = tonumber(slot.Name:match("^Skill[%s_]*(%d+)$"))
+        local inner = slot:FindFirstChild("Inner")
+        local icon = inner and inner:FindFirstChild("Icon")
+        local cooldown = slot:FindFirstChild("Cooldown")
+        if number and skillKeys[number] and cooldown and cooldown:IsA("GuiObject")
+            and icon and (icon:IsA("ImageLabel") or icon:IsA("ImageButton"))
+            and icon.Image ~= "" and icon.Image ~= "rbxassetid://0" then
+            local shown = true
+            local parent = slot
+            while parent and parent ~= localPlayer do
+                if parent:IsA("GuiObject") and not parent.Visible then shown = false break end
+                if parent:IsA("ScreenGui") and not parent.Enabled then shown = false break end
+                parent = parent.Parent
+            end
+            local last = skillAttempts[slot] or -math.huge
+            if shown and not cooldown.Visible and os.clock() - last >= 5
+                and (not best or last < best.last or (last == best.last and number < best.number)) then
+                best = {slot = slot, cooldown = cooldown, key = skillKeys[number], number = number, last = last}
+            end
+        end
+    end
+    return best
+end
+local function useReadySkill(skill, generation)
+    v4.skillCasting = true
+    v4.autoAttack = false
+    local ok, err = pcall(function()
+        -- Let an already-sent attack finish before sending any skill key.
+        local deadline = os.clock() + 2
+        while v4.attackCallInFlight and os.clock() < deadline do task.wait(0.05) end
+        if v4.attackCallInFlight then return end
+        task.wait(0.4)
+        if generation ~= (v4.inputGeneration or 0) or not v4.autofarmEnabled
+            or not farmInputAllowed() or not skill.cooldown.Parent or skill.cooldown.Visible then return end
+        skillAttempts[skill.slot] = os.clock()
+        v4.VIM:SendKeyEvent(true, skill.key, false, game)
+        task.wait(0.08)
+        v4.VIM:SendKeyEvent(false, skill.key, false, game)
+        -- Keep attacks paused while waiting for the HUD to acknowledge the cast.
+        local acknowledgeBy = os.clock() + 0.8
+        while skill.cooldown.Parent and not skill.cooldown.Visible and os.clock() < acknowledgeBy
+            and generation == (v4.inputGeneration or 0) and farmInputAllowed() do
+            task.wait(0.05)
+        end
+        task.wait(0.4)
+    end)
+    pcall(function() v4.VIM:SendKeyEvent(false, skill.key, false, game) end)
+    v4.skillCasting = false
+    v4.autoAttack = farmInputAllowed() and not v4.centerClickFailed
+    -- Guarantee an attack window between skills, including unsuccessful casts.
+    nextSkillCheckAt = os.clock() + 0.8
+    if not ok then
+        skillAttempts[skill.slot] = os.clock()
+        warn("Yozakura skill " .. skill.number .. ": " .. tostring(err))
+    end
+end
 task.spawn(function()
     while v3["1"].Parent do
         local started = os.clock()
-        local opCycle = v4.autofarmEnabled
-        local generation = v4.inputGeneration or 0
-        local sentSkill = false
-        v4.autoAttack = farmActive() and not v4.centerClickFailed
+        v4.autoAttack = farmInputAllowed() and not v4.centerClickFailed and not v4.skillCasting
         if farmInputAllowed() then
-            if not v4.centerClickFailed then
-                local ok, clicked = pcall(clickOnce)
+            local skill
+            if v4.autofarmEnabled and os.clock() >= nextSkillCheckAt then
+                local ok, result = pcall(readySkill)
+                if ok then skill = result end
+            end
+            if skill then
+                useReadySkill(skill, v4.inputGeneration or 0)
+            elseif not v4.centerClickFailed then
+                local ok, err = pcall(clickOnce)
                 if not ok then
                     v4.centerClickFailed = true
                     v4.autoAttack = false
-                    v2("M1 input unavailable", tostring(clicked) .. ". Skill input will continue separately.", 8)
-                end
-                -- clicked=false means UI covered the center; it does not block key 1.
-            end
-            if opCycle and not v4.skillInputFailed then
-                task.wait(0.4)
-                if generation == (v4.inputGeneration or 0) and v4.autofarmEnabled and farmInputAllowed() then
-                    local skillKey = nextSkillKey
-                    nextSkillKey = skillKey == Enum.KeyCode.One and Enum.KeyCode.Two or Enum.KeyCode.One
-                    local skillOK, err = pcall(function()
-                        v4.VIM:SendKeyEvent(true, skillKey, false, game)
-                        task.wait(0.08)
-                        v4.VIM:SendKeyEvent(false, skillKey, false, game)
-                    end)
-                    if not skillOK then
-                        pcall(function() v4.VIM:SendKeyEvent(false, skillKey, false, game) end)
-                        v4.skillInputFailed = true
-                        v2("Skill input unavailable", tostring(err) .. ". Toggle OP off/on to retry.", 8)
-                    end
-                    sentSkill = true
+                    v2("M1 input unavailable", tostring(err), 8)
                 end
             end
         end
-        if sentSkill then
-            task.wait(0.4)
-        else
-            task.wait(math.max(0.01, attackInterval() - (os.clock() - started)))
-        end
+        task.wait(math.max(0.01, attackInterval() - (os.clock() - started)))
     end
+    v4.skillCasting = false
     v4.autoAttack = false
 end)
 -- Event observation triggers at zero; polling reconnects if the HUD changes.
