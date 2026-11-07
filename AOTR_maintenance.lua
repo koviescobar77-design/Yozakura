@@ -2323,115 +2323,57 @@ v3["2b"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         v3["2b"].BackgroundColor3 = Color3.new(1, 0, 0);
     end;
 end);
--- Thrill: the user equips this in hotbar slot 1 (keyboard shortcut One).
--- Only sends input while farming; HUD cooldown confirmation controls repeats.
+-- OP Autofarm uses the equipped slot 1 skill (Thrill in the user's loadout).
 do
-    local wasFarming, awaitingCooldown, cooldownSeen, inputBlocked = false, false, false, false
-    local sentAt = 0
-    local warnedMissing = false
-    local function slotOneCooldown()
-        local hotbar = findPath(localPlayer, {"PlayerGui", "Interface", "HUD", "Main", "Top", "Hotbar"})
-        if not hotbar then return nil end
-        local slot
-        for _, child in ipairs(hotbar:GetChildren()) do
-            if child.Name:lower():match("^skill[%s_]*1$") then
-                if slot then return nil end
-                slot = child
-            end
-        end
-        if not slot then return nil end
-        local icon = findPath(slot, {"Inner", "Icon"})
-        local cooldown = slot:FindFirstChild("Cooldown")
-        if not icon or not (icon:IsA("ImageLabel") or icon:IsA("ImageButton"))
-            or icon.Image == "" or icon.Image == "rbxassetid://0"
-            or not cooldown or not cooldown:IsA("GuiObject") then return nil end
-        local ancestor = slot
-        while ancestor and ancestor ~= localPlayer do
-            if ancestor:IsA("GuiObject") and not ancestor.Visible then return nil end
-            if ancestor:IsA("ScreenGui") and not ancestor.Enabled then return nil end
-            ancestor = ancestor.Parent
-        end
-        return cooldown
-    end
+    local nextAttempt, blocked, wasEnabled = 0, false, false
     task.spawn(function()
         while v3["1"].Parent do
-            task.wait(0.1)
-            local farming = v4.oldfarmEnabled or v4.autofarmEnabled
-            if not farming then
-                wasFarming, awaitingCooldown, cooldownSeen, inputBlocked = false, false, false, false
-                warnedMissing = false
-            else
-                if not wasFarming then
-                    wasFarming = true
-                    print("[Yozakura] Slot 1 / Thrill automation enabled.")
+            task.wait(0.2)
+            if not v4.autofarmEnabled then
+                nextAttempt, blocked, wasEnabled = 0, false, false
+            elseif not blocked then
+                local hotbar = findPath(localPlayer, {"PlayerGui", "Interface", "HUD", "Main", "Top", "Hotbar"})
+                local slot
+                if hotbar then
+                    for _, child in ipairs(hotbar:GetChildren()) do
+                        if child.Name:lower():match("^skill[%s_]*1$") then slot = child; break end
+                    end
                 end
-                local cooldown = slotOneCooldown()
-                if not cooldown then
-                    if not warnedMissing then
-                        warnedMissing = true
-                        v2("Slot 1 paused", "Equipped skill or cooldown HUD could not be identified.", 6)
-                    end
-                else
-                    warnedMissing = false
-                    if cooldown.Visible then
-                        cooldownSeen = true
-                        awaitingCooldown = false
-                    elseif cooldownSeen then
-                        cooldownSeen = false
-                    end
-                    if awaitingCooldown and os.clock() - sentAt >= 5 then
-                        awaitingCooldown = false
-                        inputBlocked = true
-                        v2("Slot 1 unconfirmed", "Key 1 sent, but cooldown did not appear. Toggle autofarm off/on to retry.", 8)
-                    end
-                    local character = localPlayer.Character
-                    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-                    if not inputBlocked and not awaitingCooldown and not cooldown.Visible
-                        and humanoid and humanoid.Health > 0
-                        and not refillBlocksCombat() and not missionResults()
-                        and not v4.UIP:GetFocusedTextBox() then
-                        awaitingCooldown = true
-                        sentAt = os.clock()
-                        local ok, err = pcall(function()
-                            v4.VIM:SendKeyEvent(true, Enum.KeyCode.One, false, game)
-                            task.wait(0.05)
-                            v4.VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game)
-                        end)
-                        if not ok then
-                            pcall(function() v4.VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game) end)
-                            inputBlocked = true
-                            awaitingCooldown = false
-                            v2("Slot 1 input failed", tostring(err), 8)
-                        end
+                local cooldown = slot and slot:FindFirstChild("Cooldown")
+                local cooling = cooldown and cooldown:IsA("GuiObject") and cooldown.Visible
+                local character = localPlayer.Character
+                local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+                if not cooling and os.clock() >= nextAttempt and humanoid and humanoid.Health > 0
+                    and not refillBlocksCombat() and not missionResults()
+                    and not v4.UIP:GetFocusedTextBox() then
+                    -- Missing/unconfirmed HUD never prevents the first press.
+                    -- Limit retries to once per 15 seconds, including when the HUD is unavailable.
+                    nextAttempt = os.clock() + 15
+                    local ok, err = pcall(function()
+                        v4.VIM:SendKeyEvent(true, Enum.KeyCode.One, false, game)
+                        task.wait(0.08)
+                        v4.VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game)
+                    end)
+                    if not ok then
+                        pcall(function() v4.VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game) end)
+                        blocked = true
+                        v2("Thrill input failed", tostring(err), 8)
+                    elseif not wasEnabled then
+                        wasEnabled = true
+                        v2("OP Autofarm", "Slot 1 key sent. Skill activation is not yet verified.", 5)
                     end
                 end
             end
         end
     end)
 end
-
-local function v108() --[[ Line: 67 ]] --[[ Name: 25ms ]]
-    -- upvalues: v2 (ref), v4 (ref)
-    if not v4.autofarmEnabled or refillBlocksCombat() then return end
-    v2("Autofarm", "Clearing Mission...");
-    local _ = v4.character.Humanoid:GetPlayingAnimationTracks();
-    local v107 = tick();
-    while tick() - v107 < 3.5 do
-        if not v4.autofarmEnabled or refillBlocksCombat() then return end
-        if not v4.autofarmEnabled or refillBlocksCombat() then return end
-        v4.remoteGet:InvokeServer("S_Skills", "Usage", "108");
-        task.wait(0.1);
-        if not v4.autofarmEnabled or refillBlocksCombat() then return end
-        v4.remoteGet:InvokeServer("S_Skills", "Usage", "14");
-        task.wait(2.5);
-        if not v4.autofarmEnabled or refillBlocksCombat() then return end
-        v4.remoteGet:InvokeServer("S_Skills", "Usage", "23");
-        task.wait(0.1);
-        if not v4.autofarmEnabled or refillBlocksCombat() then return end
-        v4.remoteGet:InvokeServer("S_Skills", "Usage", "14");
-        task.wait(0.5);
-    end;
-end;
+local startFarmWorkers
+local function farmActive()
+    return v4.oldfarmEnabled or v4.autofarmEnabled
+end
+local function v108()
+    if v4.autofarmEnabled and startFarmWorkers then startFarmWorkers() end
+end
 if v4.autofarmEnabled and v4.passed then
     v3["32"].BackgroundColor3 = Color3.new(0, 1, 0);
     task.wait(1.5);
@@ -2441,12 +2383,17 @@ v3["32"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref), v3 (ref), v108 (ref), v2 (ref)
     if v4.passed then
         v4.autofarmEnabled = not v4.autofarmEnabled;
+        v4.centerClickFailed = false
+        if v4.autofarmEnabled then
+            v4.oldfarmEnabled = false
+            v3["4a"].BackgroundColor3 = Color3.new(1, 0, 0)
+        end
         if v4.autofarmEnabled then
             v3["32"].BackgroundColor3 = Color3.new(0, 1, 0);
             task.wait(0.2);
             coroutine.wrap(v108)();
         else
-            v3["32"].BackgroundColor3 = Color3.new(1, 0, 0);
+            stopAutoFarm()
         end;
     else
         v2("Premium", "Feature locked, check discord.");
@@ -2527,12 +2474,12 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     v122.MaxForce = Vector3.new(0, 1000, 0);
     v122.D = 1000;
     v122.P = 1000;
-    while v4.oldfarmEnabled and task.wait(0.05) do
-        if not v4.oldfarmEnabled then break end
+    while farmActive() and task.wait(0.05) do
+        if not farmActive() then break end
         if not refillBlocksCombat() then
         if not v4.attackTarget or not v4.attackTarget.Parent then v46() end
         if v4.attackTarget and v4.attackTarget.Parent then v4.nape = v4.attackTarget end
-        if not v4.oldfarmEnabled then break end
+        if not farmActive() then break end
         if not refillBlocksCombat() then
         local v123 = regularHoverHeight(v4.nape);
         if v4.titans:FindFirstChild("Attack_Titan") then
@@ -2635,7 +2582,7 @@ local function hitBurst(target, maxDistance)
     for hit = 1, CombatConfig.AttemptsPerBurst do
         local delay = nextHitAt - os.clock()
         if delay > 0 then task.wait(delay) end
-        if not v4.oldfarmEnabled or refillBlocksCombat() then break end
+        if not farmActive() or refillBlocksCombat() then break end
         if not CombatManager.CanAttack(target, maxDistance) then break end
         nextHitAt = os.clock() + CombatConfig.AttackInterval
         diagHit("Hitboxes", "Register", target, math.random(215, 230), math.random(10, 100))
@@ -2663,11 +2610,11 @@ local function v136() -- One attack worker, independent of frame rate.
         local target = v4.nape
         local range = missionTitans:FindFirstChild("Attack_Titan")
             and CombatConfig.BossRange or CombatConfig.RegularRange
-        if v4.oldfarmEnabled and not refillBlocksCombat() and CombatManager.CanAttack(target, range) then
+        if farmActive() and not refillBlocksCombat() and CombatManager.CanAttack(target, range) then
             hitBurst(target, range)
         end
     end
-    while v4.oldfarmEnabled do
+    while farmActive() do
         local iterationStarted = os.clock()
         local ok, err = xpcall(iteration, function(message)
             return tostring(message)
@@ -2675,8 +2622,7 @@ local function v136() -- One attack worker, independent of frame rate.
         if not ok then
             v4.combatWorkerRunning = false
             v4.attackTarget = nil
-            v4.oldfarmEnabled = false
-            v3["4a"].BackgroundColor3 = Color3.new(1, 0, 0)
+            stopAutoFarm("Combat worker failed: " .. tostring(err))
             diagDetail = "ERROR: " .. tostring(err)
             diagShow("Stopped after error")
             return
@@ -2687,20 +2633,30 @@ local function v136() -- One attack worker, independent of frame rate.
     v4.combatWorkerRunning = false
     diagShow("Stopped")
 end
-if v4.oldfarmEnabled then
+startFarmWorkers = function()
+    if not farmActive() then return end
+    if not v4.movementWorkerRunning then
+        v4.movementWorkerRunning = true
+        task.spawn(function()
+            local ok, err = pcall(v134)
+            v4.movementWorkerRunning = false
+            if not ok then stopAutoFarm("Movement failed: " .. tostring(err)) end
+        end)
+    end
+    task.spawn(v136)
+end
+if farmActive() then
     v4.autoAttack = true
-    v3["4a"].BackgroundColor3 = Color3.new(0, 1, 0);
-    coroutine.wrap(v134)();
-    coroutine.wrap(v136)();
+    v3["4a"].BackgroundColor3 = v4.oldfarmEnabled and Color3.new(0, 1, 0) or Color3.new(1, 0, 0)
+    startFarmWorkers()
 end;
 v3["4a"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref), v134 (ref), v136 (ref), v3 (ref)
-    v4.oldfarmEnabled = not v4.oldfarmEnabled;
+    v4.oldfarmEnabled = not farmActive();
     v4.centerClickFailed = false
     v4.autoAttack = v4.oldfarmEnabled
     if v4.oldfarmEnabled then
-        coroutine.wrap(v134)();
-        coroutine.wrap(v136)();
+        startFarmWorkers()
         v3["4a"].BackgroundColor3 = Color3.new(0, 1, 0);
     else
         stopAutoFarm()
@@ -2726,7 +2682,7 @@ end
 task.spawn(function()
     while v3["1"].Parent do
         local started = os.clock()
-        v4.autoAttack = v4.oldfarmEnabled and not v4.centerClickFailed
+        v4.autoAttack = farmActive() and not v4.centerClickFailed
         if v4.autoAttack and not refillBlocksCombat() then
             local ok, clicked = pcall(clickOnce)
             if not ok then
