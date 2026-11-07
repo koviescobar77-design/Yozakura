@@ -2460,7 +2460,7 @@ v3["2b"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         v3["2b"].BackgroundColor3 = Color3.new(1, 0, 0);
     end;
 end);
--- M1 clicks are gated by distance to the selected living Titan.
+-- Skills are attempted before M1 on each farm activation.
 local startFarmWorkers
 local function farmActive()
     return v4.oldfarmEnabled or v4.autofarmEnabled
@@ -2567,7 +2567,6 @@ local function titanRearOffset(nape)
     if horizontal.Magnitude < 0.01 then return Vector3.zero end
     return -horizontal.Unit * 12
 end
-local M1_RANGE_STUDS = 3 / 0.28 -- 3 metres using Roblox's standard scale.
 local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref), v46 (ref)
     local existingHover = v4.root:FindFirstChild("BodyPosition")
@@ -2599,18 +2598,12 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
                 l_BV_0.MaxForce = Vector3.one * (v4.autofarmEnabled and 9000 or 5500);
             end;
             local l_BG_0 = v4.root:FindFirstChild("BG");
-            -- Stay inside the click radius rather than hovering 40-195 studs away.
-            local hoverOffset = Vector3.new(0, v123, 0) + titanRearOffset(v4.nape)
-            local hoverRadius = M1_RANGE_STUDS * 0.75
-            if hoverOffset.Magnitude > hoverRadius then
-                hoverOffset = hoverOffset.Unit * hoverRadius
-            end
-            local v126 = v4.nape.Position + hoverOffset;
+            local v126 = v4.nape.Position + Vector3.new(0, v123, 0) + titanRearOffset(v4.nape);
             local delta = v126 - v4.root.Position
             local l_Unit_0 = delta.Magnitude > 0.01 and delta.Unit or v4.root.CFrame.LookVector;
             local l_Magnitude_2 = (v126 - v4.root.Position).Magnitude;
             local speedGain = v4.autofarmEnabled and 8 or 5
-            local speedLimit = 400
+            local speedLimit = v4.autofarmEnabled and 1000 or 500
             local v129 = math.min(l_Magnitude_2 * speedGain, speedLimit);
             if v4.autofarmEnabled and l_Magnitude_2 < 3 then v129 = 0 end
             if l_BV_0 then
@@ -2761,6 +2754,10 @@ local function v136() -- One attack worker, independent of frame rate.
 end
 startFarmWorkers = function()
     if not farmActive() then return end
+    if v4.skillSequenceGeneration ~= (v4.inputGeneration or 0) then
+        v4.skillSequencePending = true
+        v4.skillCasting = true
+    end
     -- OP extension is temporary; manual WIP settings remain separate.
     v61()
     if not v4.movementWorkerRunning then
@@ -2815,17 +2812,7 @@ v3["4a"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         stopAutoFarm()
     end;
 end);
-local function m1TargetInRange()
-    local target = v4.attackTarget
-    if not livingFarmTarget(target) then target = v4.nape end
-    if not livingFarmTarget(target) then return false end
-    local character = localPlayer.Character
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-    return root and root:IsA("BasePart")
-        and (root.Position - target.Position).Magnitude <= M1_RANGE_STUDS
-end
 local function clickOnce()
-    if not m1TargetInRange() then return false end
     if v4.skillCasting then return false end
     local input = game:GetService("UserInputService")
     if input:GetFocusedTextBox() then return false end
@@ -2843,8 +2830,7 @@ local function clickOnce()
     vim:SendMouseButtonEvent(position.X, position.Y, 0, false, game, 0)
     return true
 end
--- M1 only: no automatic skill keys or hotbar clicks.
-v4.skillCasting = false
+-- On each farm activation: press skills 1 and 2, then run M1.
 local function farmInputAllowed()
     local character = localPlayer.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -2852,10 +2838,48 @@ local function farmInputAllowed()
         and humanoid and humanoid.Health > 0
         and not v4.UIP:GetFocusedTextBox() and not refillBlocksCombat()
 end
+local function pressStartingSkills()
+    local generation = v4.inputGeneration or 0
+    v4.skillCasting = true
+    v4.autoAttack = false
+    local heldKey
+    local completed = false
+    local ok, err = pcall(function()
+        local deadline = os.clock() + 2
+        while v4.attackCallInFlight and os.clock() < deadline do task.wait(0.05) end
+        if v4.attackCallInFlight then return end
+        task.wait(0.4)
+        for _, key in ipairs({Enum.KeyCode.One, Enum.KeyCode.Two}) do
+            if generation ~= (v4.inputGeneration or 0) or not farmInputAllowed() then return end
+            heldKey = key
+            v4.VIM:SendKeyEvent(true, key, false, game)
+            task.wait(0.08)
+            v4.VIM:SendKeyEvent(false, key, false, game)
+            heldKey = nil
+            task.wait(0.4)
+        end
+        completed = true
+    end)
+    if heldKey then
+        pcall(function() v4.VIM:SendKeyEvent(false, heldKey, false, game) end)
+    end
+    if generation == (v4.inputGeneration or 0) and (completed or not ok) then
+        v4.skillSequenceGeneration = generation
+        v4.skillSequencePending = false
+    end
+    v4.skillCasting = farmActive() and v4.skillSequencePending == true
+    if not ok then
+        v2("Skill input unavailable", tostring(err) .. ". M1 will continue.", 8)
+    end
+end
 task.spawn(function()
     local nextClickAt = 0
     while v3["1"].Parent do
-        v4.autoAttack = farmInputAllowed() and not v4.centerClickFailed and m1TargetInRange()
+        if not farmActive() then v4.skillCasting = false end
+        if farmInputAllowed() and v4.skillSequencePending then
+            pressStartingSkills()
+        end
+        v4.autoAttack = farmInputAllowed() and not v4.centerClickFailed and not v4.skillCasting
         if v4.autoAttack and os.clock() >= nextClickAt then
             local ok, clicked = pcall(clickOnce)
             nextClickAt = os.clock() + attackInterval()
@@ -2867,6 +2891,7 @@ task.spawn(function()
         end
         task.wait(0.05)
     end
+    v4.skillCasting = false
     v4.autoAttack = false
 end)
 -- Event observation triggers at zero; polling reconnects if the HUD changes.
