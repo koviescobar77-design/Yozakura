@@ -2826,13 +2826,15 @@ local function clickOnce()
     vim:SendMouseButtonEvent(position.X, position.Y, 0, false, game, 0)
     return true
 end
--- Independent Auto Skill toggle in the Testing tab.
+-- Independent Auto Skill toggle below OP Autofarm.
 v4.autoSkillEnabled = false
 v4.skillCasting = false
 local autoSkillFrame = v3["48"]:Clone()
 autoSkillFrame.Name = "autoSkill"
-autoSkillFrame.Position = UDim2.new(0.55, 0, 0.06967, 0)
-autoSkillFrame.Parent = v3["4"]
+autoSkillFrame.Size = v3["30"].Size
+autoSkillFrame.Position = UDim2.new(v3["30"].Position.X.Scale, v3["30"].Position.X.Offset,
+    v3["48"].Position.Y.Scale, v3["48"].Position.Y.Offset)
+autoSkillFrame.Parent = v3["30"].Parent
 local autoSkillLabel = autoSkillFrame:FindFirstChild("autoLabel")
 autoSkillLabel.Text = "Auto Skill"
 local autoSkillButton = autoSkillLabel:FindFirstChild("autoToggle")
@@ -2842,7 +2844,7 @@ local function inputAllowed()
     local character = localPlayer.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     return v3["1"].Parent and humanoid and humanoid.Health > 0
-        and not v4.UIP:GetFocusedTextBox() and not refillBlocksCombat()
+        and not v4.UIP:GetFocusedTextBox() and not v4.refilling and not missionResults()
 end
 local function refreshAutoSkill()
     autoSkillButton.BackgroundColor3 = v4.autoSkillEnabled and Color3.new(0, 1, 0) or Color3.fromRGB(171, 0, 0)
@@ -2855,9 +2857,8 @@ autoSkillButton.Activated:Connect(function()
 end)
 refreshAutoSkill()
 local function skillReady(slot)
-    local cooldown = slot and slot:FindFirstChild("Cooldown")
-    local inner = slot and slot:FindFirstChild("Inner")
-    local icon = inner and inner:FindFirstChild("Icon")
+    local cooldown = slot and slot:FindFirstChild("Cooldown", true)
+    local icon = slot and slot:FindFirstChild("Icon", true)
     if not cooldown or not cooldown:IsA("GuiObject") or cooldown.Visible then return false end
     if not icon or not (icon:IsA("ImageLabel") or icon:IsA("ImageButton")) or icon.Image == "" then return false end
     local ancestor = slot
@@ -2868,18 +2869,37 @@ local function skillReady(slot)
     end
     return slot:IsA("GuiObject") and slot.AbsoluteSize.X > 0 and slot.AbsoluteSize.Y > 0
 end
+local autoSkillReported
+local function reportSkillStatus(message)
+    if autoSkillReported ~= message then
+        autoSkillReported = message
+        v2("Auto Skill", message, 6)
+    end
+end
 local function nextSkill()
-    local hotbar = findPath(localPlayer, {"PlayerGui", "Interface", "HUD", "Main", "Top", "Hotbar"})
-    if not hotbar then return nil end
+    local pg = localPlayer:FindFirstChildOfClass("PlayerGui")
+    if not pg then return nil end
     local selected, selectedNumber, oldest
-    for _, slot in ipairs(hotbar:GetChildren()) do
-        local number = tonumber(slot.Name:match("^Skill[%s_]*(%d+)$"))
-        local last = skillLastAttempt[slot] or -math.huge
-        if (number == 1 or number == 2) and skillReady(slot) and os.clock() - last >= 2
-            and (not selected or last < oldest or (last == oldest and number < selectedNumber)) then
-            selected, selectedNumber, oldest = slot, number, last
+    local found = 0
+    -- Discover slots from the live HUD; do not depend on the old Top.Hotbar path.
+    for _, slot in ipairs(pg:GetDescendants()) do
+        local name = slot.Name:lower()
+        local number = name:find("skill", 1, true) and tonumber(name:match("(%d+)$"))
+        if (number == 1 or number == 2) and slot:IsA("GuiObject") and not slot:IsDescendantOf(v3["1"]) then
+            local cooldown = slot:FindFirstChild("Cooldown", true)
+            local icon = slot:FindFirstChild("Icon", true)
+            if cooldown and icon then
+                found = found + 1
+                local last = skillLastAttempt[slot] or -math.huge
+                if skillReady(slot) and os.clock() - last >= 2
+                    and (not selected or last < oldest or (last == oldest and number < selectedNumber)) then
+                    selected, selectedNumber, oldest = slot, number, last
+                end
+            end
         end
     end
+    if found == 0 then reportSkillStatus("Skill 1/2 HUD objects were not found. No click was sent.")
+    elseif not selected and not autoSkillReported then reportSkillStatus("Waiting for a visible, ready skill.") end
     return selected
 end
 local function clickSkill(slot)
@@ -2888,6 +2908,7 @@ local function clickSkill(slot)
     v4.autoAttack = false
     local point
     local mouseHeld = false
+    local heldKey
     local ok, err = pcall(function()
         local deadline = os.clock() + 2
         while v4.attackCallInFlight and os.clock() < deadline do task.wait(0.05) end
@@ -2898,9 +2919,17 @@ local function clickSkill(slot)
         for attempt = 1, 3 do
             if not v4.autoSkillEnabled or generation ~= skillToggleGeneration or not inputAllowed() or not skillReady(slot) then break end
             point = slot.AbsolutePosition + slot.AbsoluteSize * 0.5
+            local screen = slot:FindFirstAncestorWhichIsA("ScreenGui")
+            if screen and not screen.IgnoreGuiInset then
+                local inset = game:GetService("GuiService"):GetGuiInset()
+                point = point + inset
+            end
             local pg = localPlayer:FindFirstChildOfClass("PlayerGui")
             local top = pg and pg:GetGuiObjectsAtPosition(point.X, point.Y)[1]
-            if not top or not (top == slot or top:IsDescendantOf(slot)) then break end
+            if not top or not (top == slot or top:IsDescendantOf(slot)) then
+                reportSkillStatus("Skill button is covered or its click position could not be verified.")
+                break
+            end
             mouseHeld = true
             v4.VIM:SendMouseButtonEvent(point.X, point.Y, 0, true, game, 0)
             task.wait(0.05)
@@ -2908,8 +2937,24 @@ local function clickSkill(slot)
             mouseHeld = false
             task.wait(0.15)
         end
+        -- Some desktop hotbar icons display a keybind but have no mouse handler.
+        if v4.autoSkillEnabled and generation == skillToggleGeneration and inputAllowed() and skillReady(slot) then
+            local number = tonumber(slot.Name:match("(%d+)$"))
+            heldKey = number == 1 and Enum.KeyCode.One or Enum.KeyCode.Two
+            v4.VIM:SendKeyEvent(true, heldKey, false, game)
+            task.wait(0.1)
+            v4.VIM:SendKeyEvent(false, heldKey, false, game)
+            heldKey = nil
+        end
         task.wait(0.4)
+        local cooldown = slot:FindFirstChild("Cooldown", true)
+        if cooldown and cooldown.Visible then
+            reportSkillStatus("Skill " .. (slot.Name:match("(%d+)$") or "?") .. ": cooldown detected.")
+        else
+            reportSkillStatus("Input sent, but no cooldown appeared. Skill activation is unconfirmed.")
+        end
     end)
+    if heldKey then pcall(function() v4.VIM:SendKeyEvent(false, heldKey, false, game) end) end
     if mouseHeld and point then
         pcall(function() v4.VIM:SendMouseButtonEvent(point.X, point.Y, 0, false, game, 0) end)
     end
@@ -2921,7 +2966,8 @@ task.spawn(function()
     while v3["1"].Parent do
         if inputAllowed() and v4.autoSkillEnabled and os.clock() >= nextSkillAt then
             local ok, slot = pcall(nextSkill)
-            if ok and slot then clickSkill(slot) end
+            if ok and slot then clickSkill(slot)
+            elseif not ok then reportSkillStatus("HUD lookup error: " .. tostring(slot)) end
             nextSkillAt = os.clock() + 0.8
         end
         v4.autoAttack = inputAllowed() and farmActive() and not v4.centerClickFailed and not v4.skillCasting
