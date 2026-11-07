@@ -2860,13 +2860,15 @@ local function nextReadySkill()
             end
             local state = skillStates[slot]
             if not state or state.icon ~= icon.Image or state.cooldown ~= cooldown then
-                state = {icon = icon.Image, cooldown = cooldown, attempted = false}
+                state = {icon = icon.Image, cooldown = cooldown, lastAttempt = -math.huge}
                 skillStates[slot] = state
             end
-            -- Re-arm only after a cooldown was observed, never spam an unconfirmed cast.
-            if cooldown.Visible then state.attempted = false end
-            if visible and not cooldown.Visible and not state.attempted
-                and (not candidate or number < candidate.number) then
+            -- A key press may be ignored and a short cooldown may be missed.
+            -- Read readiness each pass; retry an unconfirmed ready slot after 2s.
+            -- Oldest attempt wins so slot 1 cannot starve slot 2 or later slots.
+            if visible and not cooldown.Visible and os.clock() - state.lastAttempt >= 2
+                and (not candidate or state.lastAttempt < candidate.state.lastAttempt
+                    or (state.lastAttempt == candidate.state.lastAttempt and number < candidate.number)) then
                 candidate = {number = number, key = skillKeys[number], state = state,
                     slot = slot, icon = icon, cooldown = cooldown}
             end
@@ -2891,7 +2893,7 @@ task.spawn(function()
                 if generation == (v4.inputGeneration or 0) and v4.autofarmEnabled
                     and farmInputAllowed() and skill.slot.Parent and skill.cooldown.Parent
                     and not skill.cooldown.Visible and skill.icon.Image == skill.state.icon then
-                    skill.state.attempted = true
+                    skill.state.lastAttempt = os.clock()
                     local ok, err = pcall(function()
                         v4.VIM:SendKeyEvent(true, skill.key, false, game)
                         task.wait(0.08)
