@@ -1597,7 +1597,7 @@ end);
 v3["6f"].Text = "Yozakura"
 v4.passed = true;
 local function saveVariables(folder, values)
-    if type(writefile) ~= "function" then return end
+    if type(writefile) ~= "function" then return false, "Executor file saving is unavailable" end
     local ok, err = pcall(function()
         if type(isfolder) == "function" and type(makefolder) == "function" and not isfolder(folder) then
             makefolder(folder)
@@ -1605,6 +1605,7 @@ local function saveVariables(folder, values)
         writefile(folder .. "/savedVariables.txt", game:GetService("HttpService"):JSONEncode(values))
     end)
     if not ok then warn("Settings save failed: " .. tostring(err)) end
+    return ok, err
 end
 local function loadVariables(folder)
     if type(isfile) ~= "function" or type(readfile) ~= "function" then return {} end
@@ -1620,6 +1621,7 @@ end
 local v18 = "workspace"
 print("Loading variables...");
 local v19 = loadVariables(v18);
+v4.autoConfig = v19.autoConfig == true
 print("Variables loaded successfully");
 if type(v19.espEnabled) == type(v4.espEnabled) then v4.espEnabled = v19.espEnabled end;
 if type(v19.extendEnabled) == type(v4.extendEnabled) then v4.extendEnabled = v19.extendEnabled end;
@@ -1631,8 +1633,8 @@ v4.napeVisible = false;
 if type(v19.erenExtend) == type(v4.erenExtend) then v4.erenExtend = v19.erenExtend end;
 if type(v19.injuryEnabled) == type(v4.injuryEnabled) then v4.injuryEnabled = v19.injuryEnabled end;
 if type(v19.ripperEnabled) == type(v4.ripperEnabled) then v4.ripperEnabled = v19.ripperEnabled end;
-if type(v19.autofarmEnabled) == type(v4.autofarmEnabled) then v4.autofarmEnabled = v19.autofarmEnabled end;
-if type(v19.oldfarmEnabled) == type(v4.oldfarmEnabled) then v4.oldfarmEnabled = v19.oldfarmEnabled end;
+v4.autofarmEnabled = v4.autoConfig and v19.autofarmEnabled == true
+v4.oldfarmEnabled = v4.autoConfig and not v4.autofarmEnabled and v19.oldfarmEnabled == true
 printLoadedVariables = function(v20) --[[ Line: 67 ]] --[[ Name: 25ms ]]
     for v21, v22 in pairs(v20) do
         print(v21 .. ": " .. tostring(v22));
@@ -1650,11 +1652,103 @@ local function v24() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         injuryEnabled = v4.injuryEnabled, 
         erenExtend = v4.erenExtend, 
         ripperEnabled = v4.ripperEnabled, 
-        autofarmEnabled = v4.autofarmEnabled, 
-        oldfarmEnabled = v4.oldfarmEnabled
+        autoConfig = v4.autoConfig,
+        autofarmEnabled = v4.autofarmEnabled or (v4.autoConfig and v4.pendingFarmMode == "OP"),
+        oldfarmEnabled = v4.oldfarmEnabled or (v4.autoConfig and v4.pendingFarmMode == "WIP")
     };
-    saveVariables(v18, v23);
+    return saveVariables(v18, v23);
 end;
+-- Persist user setup and optionally reload it across mission teleports.
+do
+    local function configButton(name, text, y)
+        local button = Instance.new("TextButton")
+        button.Name = name
+        button.Text = text
+        button.Size = UDim2.new(0.16, 0, 0.12, 0)
+        button.Position = UDim2.new(0.0194, 0, y, 0)
+        button.BackgroundColor3 = Color3.fromRGB(41, 41, 41)
+        button.TextColor3 = Color3.new(1, 1, 1)
+        button.Font = Enum.Font.SourceSansBold
+        button.TextScaled = true
+        button.TextWrapped = true
+        button.Parent = v3["2"]
+        Instance.new("UICorner", button).CornerRadius = UDim.new(0, 16)
+        local stroke = Instance.new("UIStroke", button)
+        stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        stroke.Color = Color3.new(1, 1, 1)
+        return button
+    end
+    v3["55"].Size = UDim2.new(0.16, 0, 0.12, 0)
+    v3["5d"].Size = UDim2.new(0.16, 0, 0.12, 0)
+    v3["5d"].Position = UDim2.new(0.0194, 0, 0.65, 0)
+    v3["62"].Size = UDim2.new(0.16, 0, 0.12, 0)
+    v3["62"].Position = UDim2.new(0.0194, 0, 0.82, 0)
+    local save = configButton("SaveSetup", "Save Setup", 0.33)
+    local auto = configButton("AutoConfig", "", 0.49)
+    local function refresh()
+        auto.Text = "Auto Config: " .. (v4.autoConfig and "ON" or "OFF")
+        auto.BackgroundColor3 = v4.autoConfig and Color3.fromRGB(35, 110, 50) or Color3.fromRGB(41, 41, 41)
+    end
+    local queue = queue_on_teleport or queueonteleport
+    if type(queue) ~= "function" and type(syn) == "table" then queue = syn.queue_on_teleport end
+    save.Activated:Connect(function()
+        local ok, err = v24()
+        v2(ok and "Setup saved" or "Save failed", ok and "Saved your toggles, multiplier and farm selection." or tostring(err), 6)
+    end)
+    auto.Activated:Connect(function()
+        if not v4.autoConfig and not (v4.autofarmEnabled or v4.oldfarmEnabled) then
+            v2("Choose a farm", "Enable OP or WIP Farm first, then turn Auto Config on.", 6)
+            return
+        end
+        local previous = v4.autoConfig
+        v4.autoConfig = not previous
+        local ok, err = v24()
+        if not ok then v4.autoConfig = previous; v2("Auto Config not saved", tostring(err), 6)
+        elseif not v4.autoConfig then
+            v4.pendingFarmMode = nil
+            v2("Auto Config OFF", "Automatic loading and mission resume disabled.", 5)
+        elseif type(queue) ~= "function" then
+            v2("Auto Config saved", "Settings auto-load when you run the loader. This executor cannot auto-run after teleport.", 8)
+        else
+            v2("Auto Config ON", "Setup saves every 10 seconds; mission retry and teleport resume enabled.", 7)
+        end
+        refresh()
+    end)
+    refresh()
+    task.spawn(function()
+        while v3["1"].Parent do
+            task.wait(10)
+            if v4.autoConfig then
+                local ok, err = v24()
+                if not ok then
+                    v4.autoConfig = false
+                    v4.pendingFarmMode = nil
+                    refresh()
+                    v2("Auto-save failed", tostring(err), 8)
+                end
+            end
+        end
+    end)
+    local queued = false
+    localPlayer.OnTeleport:Connect(function(state)
+        if state == Enum.TeleportState.Failed then queued = false; return end
+        if state ~= Enum.TeleportState.Started or not v4.autoConfig or queued then return end
+        local ok, err = v24()
+        if not ok then v2("Teleport setup not saved", tostring(err), 8); return end
+        if type(queue) ~= "function" then return end
+        local success, message = pcall(queue, [[
+            if not game:IsLoaded() then game.Loaded:Wait() end
+            local ok, settings = pcall(function()
+                return game:GetService("HttpService"):JSONDecode(readfile("workspace/savedVariables.txt"))
+            end)
+            if ok and type(settings) == "table" and settings.autoConfig == true then
+                loadstring(game:HttpGet("https://raw.githubusercontent.com/koviescobar77-design/Yozakura/main/loader.lua"))()
+            end
+        ]])
+        queued = success
+        if not success then v2("Teleport resume unavailable", tostring(message), 8) end
+    end)
+end
 game:GetService("Players").PlayerRemoving:Connect(function(v25) --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v24 (ref)
     if v25 == game:GetService("Players").LocalPlayer then
@@ -1802,7 +1896,8 @@ local function hasLivingTitans()
     end
     return false
 end
-local function stopAutoFarm(message)
+local function stopAutoFarm(message, preserveConfig)
+    if not preserveConfig then v4.pendingFarmMode = nil end
     v4.oldfarmEnabled = false
     v4.autofarmEnabled = false
     if v4.refreshNapeExtension then v4.refreshNapeExtension() end
@@ -1912,7 +2007,11 @@ task.spawn(function()
             if v4.savedRefillCFrame then clearSavedRefill() end
             if v4.oldfarmEnabled or v4.autofarmEnabled then
                 resultsRetryPending = not resultsHandled
-                stopAutoFarm("Mission results opened.")
+                if v4.autoConfig then
+                    v4.pendingFarmMode = v4.autofarmEnabled and "OP" or "WIP"
+                    v24()
+                end
+                stopAutoFarm("Mission results opened.", v4.autoConfig)
             end
             if resultsRetryPending and retryText then
                 local text = retryText:upper()
@@ -1928,10 +2027,13 @@ task.spawn(function()
         else
             resultsHandled = false
             resultsRetryPending = false
+            if v4.autoConfig and v4.pendingFarmMode and hasLivingTitans() and v4.resumeConfiguredFarm then
+                v4.resumeConfiguredFarm()
+            end
         end
         if not shown and (v4.oldfarmEnabled or v4.autofarmEnabled) then
             v4.farmDeadline = v4.farmDeadline or (os.clock() + 300)
-            if os.clock() >= v4.farmDeadline then
+            if not v4.autoConfig and os.clock() >= v4.farmDeadline then
                 stopAutoFarm("Five-minute session finished.")
                 requestMissionRetry("Five minutes elapsed. Sending mission retry request.")
             elseif hasLivingTitans() then
@@ -2662,6 +2764,24 @@ startFarmWorkers = function()
         end)
     end
     task.spawn(v136)
+end
+v4.resumeConfiguredFarm = function()
+    local mode = v4.pendingFarmMode
+    if not v4.autoConfig or not mode or missionResults() then return end
+    local character = localPlayer.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not root or not humanoid or humanoid.Health <= 0 then return end
+    if v4.movementWorkerRunning or v4.combatWorkerRunning then return end
+    v4.character, v4.root, v4.humanoid = character, root, humanoid
+    v4.autofarmEnabled = mode == "OP"
+    v4.oldfarmEnabled = mode == "WIP"
+    v4.pendingFarmMode = nil
+    v4.centerClickFailed = false
+    v4.farmDeadline = nil
+    v3["32"].BackgroundColor3 = v4.autofarmEnabled and Color3.new(0, 1, 0) or Color3.new(1, 0, 0)
+    v3["4a"].BackgroundColor3 = v4.oldfarmEnabled and Color3.new(0, 1, 0) or Color3.new(1, 0, 0)
+    startFarmWorkers()
 end
 if farmActive() then
     v4.autoAttack = true
