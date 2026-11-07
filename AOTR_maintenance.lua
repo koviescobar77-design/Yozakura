@@ -2064,7 +2064,7 @@ end
 
 -- Local scheduling and validation only; these are not server damage/crit stats.
 local CombatConfig = {
-    AttackInterval = 0.1,
+    AttackInterval = 0.08,
     AttemptsPerBurst = 10,
     RegularRange = 175,
     BossRange = 250,
@@ -2098,6 +2098,7 @@ local function hitBurst(target, maxDistance)
         if not v4.oldfarmEnabled or refillBlocksCombat() then break end
         if not CombatManager.CanAttack(target, maxDistance) then break end
         nextHitAt = os.clock() + CombatConfig.AttackInterval
+        v4.remotePost:FireServer("Attacks", "Slash", true)
         diagHit("Hitboxes", "Register", target, math.random(215, 230), math.random(10, 100))
         sent = sent + 1
     end
@@ -2119,16 +2120,13 @@ local function v136() -- One attack worker, independent of frame rate.
 
         diagShow("Finding target")
         v46();
-        if not v4.autoAttack then task.wait(0.05) end
         diagShow("Checking target distance")
         local target = v4.nape
         local range = missionTitans:FindFirstChild("Attack_Titan")
             and CombatConfig.BossRange or CombatConfig.RegularRange
         if v4.oldfarmEnabled and not refillBlocksCombat() and CombatManager.CanAttack(target, range) then
-            if not v4.autoAttack then v4.remotePost:FireServer("Attacks", "Slash", true) end
             hitBurst(target, range)
         end
-        if not v4.autoAttack then task.wait(0.05) end
     end
     while v4.oldfarmEnabled do
         local iterationStarted = os.clock()
@@ -2144,7 +2142,7 @@ local function v136() -- One attack worker, independent of frame rate.
             diagShow("Stopped after error")
             return
         end
-        local targetInterval = v4.autoAttack and CombatConfig.AttackInterval or 1
+        local targetInterval = CombatConfig.AttackInterval
         task.wait(math.max(0.01, targetInterval - (os.clock() - iterationStarted)))
     end
     v4.combatWorkerRunning = false
@@ -2159,7 +2157,6 @@ end;
 v3["4a"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref), v134 (ref), v136 (ref), v3 (ref)
     v4.oldfarmEnabled = not v4.oldfarmEnabled;
-    v4.centerClickFailed = false
     v4.autoAttack = v4.oldfarmEnabled
     if v4.oldfarmEnabled then
         coroutine.wrap(v134)();
@@ -2169,39 +2166,6 @@ v3["4a"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         stopAutoFarm()
     end;
 end);
-local function clickOnce()
-    local input = game:GetService("UserInputService")
-    if input:GetFocusedTextBox() then return false end
-    local camera = workspace.CurrentCamera
-    if not camera then return false end
-    local position = camera.ViewportSize * 0.5
-    local gui = localPlayer:FindFirstChildOfClass("PlayerGui")
-    if gui then
-        for _, object in ipairs(gui:GetGuiObjectsAtPosition(position.X, position.Y)) do
-            if object:IsA("GuiButton") or object:IsA("TextBox") then return false end
-        end
-    end
-    local vim = game:GetService("VirtualInputManager")
-    vim:SendMouseButtonEvent(position.X, position.Y, 0, true, game, 0)
-    vim:SendMouseButtonEvent(position.X, position.Y, 0, false, game, 0)
-    return true
-end
-task.spawn(function()
-    while v3["1"].Parent do
-        local started = os.clock()
-        v4.autoAttack = v4.oldfarmEnabled and not v4.centerClickFailed
-        if v4.autoAttack and not refillBlocksCombat() then
-            local ok, clicked = pcall(clickOnce)
-            if not ok then
-                v4.centerClickFailed = true
-                v4.autoAttack = false
-                v2("Center input unavailable", tostring(clicked), 8)
-            end
-        end
-        task.wait(math.max(0.01, 0.1 - (os.clock() - started)))
-    end
-    v4.autoAttack = false
-end)
 -- Event observation triggers at zero; polling reconnects if the HUD changes.
 v4.bladeEnabled = true
 v3["13"].BackgroundColor3 = Color3.new(0, 1, 0)
