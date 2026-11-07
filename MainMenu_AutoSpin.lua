@@ -1,4 +1,4 @@
--- Yozakura main-menu test revision 2: slots, Play/NO, Customization/Family.
+-- Yozakura main-menu test revision 3: slots, Play/NO, Customization/Family.
 -- Uses visible UI only. Unknown results stop the worker.
 if not game:IsLoaded() then game.Loaded:Wait() end
 local player = game:GetService("Players").LocalPlayer
@@ -36,7 +36,7 @@ local function widget(class, text, y, height)
     Instance.new("UICorner", w).CornerRadius = UDim.new(0, 5)
     return w
 end
-widget("TextLabel", "YOZAKURA · FAMILY SPIN · TEST v2", 10)
+widget("TextLabel", "YOZAKURA · FAMILY SPIN · TEST v3", 10)
 local status = widget("TextLabel", "Open Customization, then check family detection.", 47, 48)
 status.TextWrapped = true
 local custom = widget("TextButton", "Open Customization", 103)
@@ -182,6 +182,7 @@ local function click(o)
         assert(top and (top == o or top:IsDescendantOf(o)), "Game button is covered by another game window")
         local vim = game:GetService("VirtualInputManager")
         vim:SendMouseButtonEvent(point.X, point.Y, 0, true, game, 0)
+        task.wait(0.05)
         vim:SendMouseButtonEvent(point.X, point.Y, 0, false, game, 0)
         task.wait(0.1)
     end)
@@ -198,12 +199,56 @@ local function waitUntil(token, getter, seconds)
     until os.clock() >= deadline
     error("Timed out waiting for the next screen")
 end
+local function slotTitle(o)
+    if not visible(o) or not (o:IsA("TextLabel") or o:IsA("TextButton")) then return nil end
+    return clean(o.Text):upper():match("^SLOT%s+([ABC])$")
+end
+local function hasWord(o, expected)
+    for _, word in ipairs(buttonWords(o)) do
+        if clean(word):lower() == expected then return true end
+    end
+    return false
+end
+local function slotInfo(slot)
+    local headers = {}
+    for _, o in ipairs(pg:GetDescendants()) do
+        if slotTitle(o) == slot then table.insert(headers, o) end
+    end
+    local header = unique(headers)
+    if not header then return nil, "Slot " .. slot .. " title not uniquely visible", #headers > 0 end
+    local scope = header.Parent
+    while scope and scope ~= pg do
+        local differentSlot = false
+        local selects, locked = {}, false
+        for _, o in ipairs(scope:GetDescendants()) do
+            local title = slotTitle(o)
+            if title and title ~= slot then differentSlot = true end
+            if o:IsA("GuiButton") and visible(o) then
+                if hasWord(o, "select") then table.insert(selects, o) end
+                if hasWord(o, "unlock") then locked = true end
+            end
+        end
+        -- Never cross from one slot card into the container for all three slots.
+        if differentSlot then break end
+        -- Prefer the actual SELECT button over an enclosing clickable card.
+        local deepest = {}
+        for _, candidate in ipairs(selects) do
+            local enclosing = false
+            for _, other in ipairs(selects) do
+                if candidate ~= other and other:IsDescendantOf(candidate) then enclosing = true end
+            end
+            if not enclosing then table.insert(deepest, candidate) end
+        end
+        if #deepest == 1 then return deepest[1], nil, true end
+        if #deepest > 1 then return nil, "Multiple SELECT buttons in Slot " .. slot, true end
+        if locked then return nil, "Slot " .. slot .. " is locked. UNLOCK will not be clicked.", true end
+        scope = scope.Parent
+    end
+    return nil, "SELECT button not found inside Slot " .. slot .. " card", true
+end
 local function slotButton(slot)
-    local lower = slot:lower()
-    return matchingButton({
-        [lower] = true, ["slot " .. lower] = true,
-        ["slot" .. lower] = true, ["slot_" .. lower] = true,
-    })
+    local target = slotInfo(slot)
+    return target
 end
 local function tutorialNo()
     local no = matchingButton({no = true})
@@ -244,15 +289,20 @@ local function familyButton()
     return nil
 end
 local function chooseSlotIfVisible(token)
-    local b = slotButton(selectedSlot)
-    if b then
-        setStatus("Selecting Slot " .. selectedSlot)
-        click(b)
+    local target, reason, shown = slotInfo(selectedSlot)
+    if target then
+        setStatus("Clicking SELECT in Slot " .. selectedSlot .. "...")
+        click(target)
         waitUntil(token, function()
             return matchingButton({play = true}) or button("custom")
-        end, 12)
-    elseif slotButton("A") or slotButton("B") or slotButton("C") then
-        error("Selected slot is unavailable: " .. selectedSlot)
+        end, 30)
+    elseif shown then
+        error(reason, 0)
+    else
+        for _, slot in ipairs({"A", "B", "C"}) do
+            local _, _, anotherShown = slotInfo(slot)
+            if anotherShown then error(reason, 0) end
+        end
     end
 end
 local function openFamily(token)
@@ -292,10 +342,11 @@ for index, slot in ipairs({"A", "B", "C"}) do
         selectedSlot = slot
         for key, item in pairs(slotButtons) do item.Text = "Slot " .. key .. (key == slot and " ✓" or "") end
         navigate(function(token)
-            local target = slotButton(slot)
-            if not target then setStatus("Slot " .. slot .. " selected. Open the game's slot screen to apply."); return end
+            local target, reason = slotInfo(slot)
+            if not target then error(reason, 0) end
+            setStatus("Clicking SELECT in Slot " .. slot .. "...")
             click(target)
-            waitUntil(token, function() return matchingButton({play = true}) or button("custom") end, 12)
+            waitUntil(token, function() return matchingButton({play = true}) or button("custom") end, 30)
             setStatus("Slot " .. slot .. " opened.")
         end)
     end)
