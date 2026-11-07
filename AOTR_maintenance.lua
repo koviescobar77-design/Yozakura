@@ -2460,7 +2460,7 @@ v3["2b"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         v3["2b"].BackgroundColor3 = Color3.new(1, 0, 0);
     end;
 end);
--- Skills are attempted before M1 on each farm activation.
+-- Auto Skill is controlled independently from the Testing tab.
 local startFarmWorkers
 local function farmActive()
     return v4.oldfarmEnabled or v4.autofarmEnabled
@@ -2754,10 +2754,6 @@ local function v136() -- One attack worker, independent of frame rate.
 end
 startFarmWorkers = function()
     if not farmActive() then return end
-    if v4.skillSequenceGeneration ~= (v4.inputGeneration or 0) then
-        v4.skillSequencePending = true
-        v4.skillCasting = true
-    end
     -- OP extension is temporary; manual WIP settings remain separate.
     v61()
     if not v4.movementWorkerRunning then
@@ -2830,56 +2826,105 @@ local function clickOnce()
     vim:SendMouseButtonEvent(position.X, position.Y, 0, false, game, 0)
     return true
 end
--- On each farm activation: press skills 1 and 2, then run M1.
-local function farmInputAllowed()
+-- Independent Auto Skill toggle in the Testing tab.
+v4.autoSkillEnabled = false
+v4.skillCasting = false
+local autoSkillFrame = v3["48"]:Clone()
+autoSkillFrame.Name = "autoSkill"
+autoSkillFrame.Position = UDim2.new(0.55, 0, 0.06967, 0)
+autoSkillFrame.Parent = v3["4"]
+local autoSkillLabel = autoSkillFrame:FindFirstChild("autoLabel")
+autoSkillLabel.Text = "Auto Skill"
+local autoSkillButton = autoSkillLabel:FindFirstChild("autoToggle")
+local skillToggleGeneration = 0
+local skillLastAttempt = {}
+local function inputAllowed()
     local character = localPlayer.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    return v3["1"].Parent and farmActive()
-        and humanoid and humanoid.Health > 0
+    return v3["1"].Parent and humanoid and humanoid.Health > 0
         and not v4.UIP:GetFocusedTextBox() and not refillBlocksCombat()
 end
-local function pressStartingSkills()
-    local generation = v4.inputGeneration or 0
+local function refreshAutoSkill()
+    autoSkillButton.BackgroundColor3 = v4.autoSkillEnabled and Color3.new(0, 1, 0) or Color3.fromRGB(171, 0, 0)
+end
+autoSkillButton.Activated:Connect(function()
+    v4.autoSkillEnabled = not v4.autoSkillEnabled
+    skillToggleGeneration = skillToggleGeneration + 1
+    skillLastAttempt = {}
+    refreshAutoSkill()
+end)
+refreshAutoSkill()
+local function skillReady(slot)
+    local cooldown = slot and slot:FindFirstChild("Cooldown")
+    local inner = slot and slot:FindFirstChild("Inner")
+    local icon = inner and inner:FindFirstChild("Icon")
+    if not cooldown or not cooldown:IsA("GuiObject") or cooldown.Visible then return false end
+    if not icon or not (icon:IsA("ImageLabel") or icon:IsA("ImageButton")) or icon.Image == "" then return false end
+    local ancestor = slot
+    while ancestor and ancestor ~= localPlayer do
+        if ancestor:IsA("GuiObject") and not ancestor.Visible then return false end
+        if ancestor:IsA("ScreenGui") and not ancestor.Enabled then return false end
+        ancestor = ancestor.Parent
+    end
+    return slot:IsA("GuiObject") and slot.AbsoluteSize.X > 0 and slot.AbsoluteSize.Y > 0
+end
+local function nextSkill()
+    local hotbar = findPath(localPlayer, {"PlayerGui", "Interface", "HUD", "Main", "Top", "Hotbar"})
+    if not hotbar then return nil end
+    local selected, selectedNumber, oldest
+    for _, slot in ipairs(hotbar:GetChildren()) do
+        local number = tonumber(slot.Name:match("^Skill[%s_]*(%d+)$"))
+        local last = skillLastAttempt[slot] or -math.huge
+        if (number == 1 or number == 2) and skillReady(slot) and os.clock() - last >= 2
+            and (not selected or last < oldest or (last == oldest and number < selectedNumber)) then
+            selected, selectedNumber, oldest = slot, number, last
+        end
+    end
+    return selected
+end
+local function clickSkill(slot)
+    local generation = skillToggleGeneration
     v4.skillCasting = true
     v4.autoAttack = false
-    local heldKey
-    local completed = false
+    local point
+    local mouseHeld = false
     local ok, err = pcall(function()
         local deadline = os.clock() + 2
         while v4.attackCallInFlight and os.clock() < deadline do task.wait(0.05) end
         if v4.attackCallInFlight then return end
         task.wait(0.4)
-        for _, key in ipairs({Enum.KeyCode.One, Enum.KeyCode.Two}) do
-            if generation ~= (v4.inputGeneration or 0) or not farmInputAllowed() then return end
-            heldKey = key
-            v4.VIM:SendKeyEvent(true, key, false, game)
-            task.wait(0.08)
-            v4.VIM:SendKeyEvent(false, key, false, game)
-            heldKey = nil
-            task.wait(0.4)
+        if not v4.autoSkillEnabled or generation ~= skillToggleGeneration or not inputAllowed() or not skillReady(slot) then return end
+        skillLastAttempt[slot] = os.clock()
+        for attempt = 1, 3 do
+            if not v4.autoSkillEnabled or generation ~= skillToggleGeneration or not inputAllowed() or not skillReady(slot) then break end
+            point = slot.AbsolutePosition + slot.AbsoluteSize * 0.5
+            local pg = localPlayer:FindFirstChildOfClass("PlayerGui")
+            local top = pg and pg:GetGuiObjectsAtPosition(point.X, point.Y)[1]
+            if not top or not (top == slot or top:IsDescendantOf(slot)) then break end
+            mouseHeld = true
+            v4.VIM:SendMouseButtonEvent(point.X, point.Y, 0, true, game, 0)
+            task.wait(0.05)
+            v4.VIM:SendMouseButtonEvent(point.X, point.Y, 0, false, game, 0)
+            mouseHeld = false
+            task.wait(0.15)
         end
-        completed = true
+        task.wait(0.4)
     end)
-    if heldKey then
-        pcall(function() v4.VIM:SendKeyEvent(false, heldKey, false, game) end)
+    if mouseHeld and point then
+        pcall(function() v4.VIM:SendMouseButtonEvent(point.X, point.Y, 0, false, game, 0) end)
     end
-    if generation == (v4.inputGeneration or 0) and (completed or not ok) then
-        v4.skillSequenceGeneration = generation
-        v4.skillSequencePending = false
-    end
-    v4.skillCasting = farmActive() and v4.skillSequencePending == true
-    if not ok then
-        v2("Skill input unavailable", tostring(err) .. ". M1 will continue.", 8)
-    end
+    v4.skillCasting = false
+    if not ok then warn("Yozakura Auto Skill: " .. tostring(err)) end
 end
 task.spawn(function()
-    local nextClickAt = 0
+    local nextClickAt, nextSkillAt = 0, 0
     while v3["1"].Parent do
-        if not farmActive() then v4.skillCasting = false end
-        if farmInputAllowed() and v4.skillSequencePending then
-            pressStartingSkills()
+        if inputAllowed() and v4.autoSkillEnabled and os.clock() >= nextSkillAt then
+            local ok, slot = pcall(nextSkill)
+            if ok and slot then clickSkill(slot) end
+            nextSkillAt = os.clock() + 0.8
         end
-        v4.autoAttack = farmInputAllowed() and not v4.centerClickFailed and not v4.skillCasting
+        v4.autoAttack = inputAllowed() and farmActive() and not v4.centerClickFailed and not v4.skillCasting
         if v4.autoAttack and os.clock() >= nextClickAt then
             local ok, clicked = pcall(clickOnce)
             nextClickAt = os.clock() + attackInterval()
