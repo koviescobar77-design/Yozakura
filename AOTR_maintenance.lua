@@ -2459,7 +2459,7 @@ v3["2b"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         v3["2b"].BackgroundColor3 = Color3.new(1, 0, 0);
     end;
 end);
--- Ready skill icons 1 and 2 share a pause with both attack workers below.
+-- M1 clicks are gated by distance to the selected living Titan.
 local startFarmWorkers
 local function farmActive()
     return v4.oldfarmEnabled or v4.autofarmEnabled
@@ -2566,6 +2566,7 @@ local function titanRearOffset(nape)
     if horizontal.Magnitude < 0.01 then return Vector3.zero end
     return -horizontal.Unit * 12
 end
+local M1_RANGE_STUDS = 3 / 0.28 -- 3 metres using Roblox's standard scale.
 local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref), v46 (ref)
     local existingHover = v4.root:FindFirstChild("BodyPosition")
@@ -2597,7 +2598,13 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
                 l_BV_0.MaxForce = Vector3.one * (v4.autofarmEnabled and 9000 or 5500);
             end;
             local l_BG_0 = v4.root:FindFirstChild("BG");
-            local v126 = v4.nape.Position + Vector3.new(0, v123, 0) + titanRearOffset(v4.nape);
+            -- Stay inside the click radius rather than hovering 40-195 studs away.
+            local hoverOffset = Vector3.new(0, v123, 0) + titanRearOffset(v4.nape)
+            local hoverRadius = M1_RANGE_STUDS * 0.75
+            if hoverOffset.Magnitude > hoverRadius then
+                hoverOffset = hoverOffset.Unit * hoverRadius
+            end
+            local v126 = v4.nape.Position + hoverOffset;
             local delta = v126 - v4.root.Position
             local l_Unit_0 = delta.Magnitude > 0.01 and delta.Unit or v4.root.CFrame.LookVector;
             local l_Magnitude_2 = (v126 - v4.root.Position).Magnitude;
@@ -2807,7 +2814,17 @@ v3["4a"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         stopAutoFarm()
     end;
 end);
+local function m1TargetInRange()
+    local target = v4.attackTarget
+    if not livingFarmTarget(target) then target = v4.nape end
+    if not livingFarmTarget(target) then return false end
+    local character = localPlayer.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    return root and root:IsA("BasePart")
+        and (root.Position - target.Position).Magnitude <= M1_RANGE_STUDS
+end
 local function clickOnce()
+    if not m1TargetInRange() then return false end
     if v4.skillCasting then return false end
     local input = game:GetService("UserInputService")
     if input:GetFocusedTextBox() then return false end
@@ -2825,7 +2842,8 @@ local function clickOnce()
     vim:SendMouseButtonEvent(position.X, position.Y, 0, false, game, 0)
     return true
 end
--- Skill readiness pauses BOTH M1 and the separate attack worker.
+-- M1 only: no automatic skill keys or hotbar clicks.
+v4.skillCasting = false
 local function farmInputAllowed()
     local character = localPlayer.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -2833,119 +2851,21 @@ local function farmInputAllowed()
         and humanoid and humanoid.Health > 0
         and not v4.UIP:GetFocusedTextBox() and not refillBlocksCombat()
 end
-local skillAttempts = setmetatable({}, {__mode = "k"})
-local skillKeys = {Enum.KeyCode.One, Enum.KeyCode.Two}
-local nextSkillCheckAt = 0
-local function readySkill()
-    local hotbar = findPath(localPlayer, {"PlayerGui", "Interface", "HUD", "Main", "Top", "Hotbar"})
-    if not hotbar then return nil end
-    local best
-    for _, slot in ipairs(hotbar:GetChildren()) do
-        local number = tonumber(slot.Name:match("^Skill[%s_]*(%d+)$"))
-        local inner = slot:FindFirstChild("Inner")
-        local icon = inner and inner:FindFirstChild("Icon")
-        local cooldown = slot:FindFirstChild("Cooldown")
-        if number and skillKeys[number] and cooldown and cooldown:IsA("GuiObject")
-            and icon and (icon:IsA("ImageLabel") or icon:IsA("ImageButton"))
-            and icon.Image ~= "" and icon.Image ~= "rbxassetid://0" then
-            local shown = true
-            local parent = slot
-            while parent and parent ~= localPlayer do
-                if parent:IsA("GuiObject") and not parent.Visible then shown = false break end
-                if parent:IsA("ScreenGui") and not parent.Enabled then shown = false break end
-                parent = parent.Parent
-            end
-            if cooldown.Visible then skillAttempts[slot] = nil end
-            local last = skillAttempts[slot] or -math.huge
-            if shown and not cooldown.Visible and os.clock() - last >= 2
-                and (not best or last < best.last or (last == best.last and number < best.number)) then
-                best = {slot = slot, cooldown = cooldown, key = skillKeys[number], number = number, last = last}
-            end
-        end
-    end
-    return best
-end
-local function useReadySkill(skill, generation)
-    v4.skillCasting = true
-    v4.autoAttack = false
-    local pressedAt
-    local ok, err = pcall(function()
-        local deadline = os.clock() + 2
-        while v4.attackCallInFlight and os.clock() < deadline do task.wait(0.05) end
-        if v4.attackCallInFlight then return end
-        task.wait(0.4)
-        skillAttempts[skill.slot] = os.clock()
-        -- Click the live slot position; never hard-code screenshot coordinates.
-        -- A bounded burst avoids permanently starving M1 if the HUD does not respond.
-        for attempt = 1, 3 do
-            if generation ~= (v4.inputGeneration or 0) or not v4.autofarmEnabled
-                or not farmInputAllowed() or not skill.slot.Parent
-                or not skill.cooldown.Parent or skill.cooldown.Visible then break end
-            local slot = skill.slot
-            if not slot:IsA("GuiObject") or slot.AbsoluteSize.X <= 0 or slot.AbsoluteSize.Y <= 0 then break end
-            local shown = true
-            local ancestor = slot
-            while ancestor and ancestor ~= localPlayer do
-                if ancestor:IsA("GuiObject") and not ancestor.Visible then shown = false break end
-                if ancestor:IsA("ScreenGui") and not ancestor.Enabled then shown = false break end
-                ancestor = ancestor.Parent
-            end
-            if not shown then break end
-            local point = slot.AbsolutePosition + slot.AbsoluteSize * 0.5
-            local gui = localPlayer:FindFirstChildOfClass("PlayerGui")
-            local objects = gui and gui:GetGuiObjectsAtPosition(point.X, point.Y) or {}
-            local top = objects[1]
-            if not top or not (top == slot or top:IsDescendantOf(slot)) then break end
-            pressedAt = point
-            v4.VIM:SendMouseButtonEvent(point.X, point.Y, 0, true, game, 0)
-            task.wait(0.05)
-            v4.VIM:SendMouseButtonEvent(point.X, point.Y, 0, false, game, 0)
-            pressedAt = nil
-            task.wait(0.15)
-        end
-        if skill.cooldown.Parent and skill.cooldown.Visible then
-            skillAttempts[skill.slot] = nil
-        end
-        task.wait(0.4)
-    end)
-    -- Release even if the click or GUI lookup failed.
-    if pressedAt then
-        pcall(function()
-            v4.VIM:SendMouseButtonEvent(pressedAt.X, pressedAt.Y, 0, false, game, 0)
-        end)
-    end
-    v4.skillCasting = false
-    v4.autoAttack = farmInputAllowed() and not v4.centerClickFailed
-    nextSkillCheckAt = os.clock() + 0.8
-    if not ok then
-        skillAttempts[skill.slot] = os.clock()
-        warn("Yozakura skill " .. skill.number .. ": " .. tostring(err))
-    end
-end
 task.spawn(function()
+    local nextClickAt = 0
     while v3["1"].Parent do
-        local started = os.clock()
-        v4.autoAttack = farmInputAllowed() and not v4.centerClickFailed and not v4.skillCasting
-        if farmInputAllowed() then
-            local skill
-            if v4.autofarmEnabled and os.clock() >= nextSkillCheckAt then
-                local ok, result = pcall(readySkill)
-                if ok then skill = result end
-            end
-            if skill then
-                useReadySkill(skill, v4.inputGeneration or 0)
-            elseif not v4.centerClickFailed then
-                local ok, err = pcall(clickOnce)
-                if not ok then
-                    v4.centerClickFailed = true
-                    v4.autoAttack = false
-                    v2("M1 input unavailable", tostring(err), 8)
-                end
+        v4.autoAttack = farmInputAllowed() and not v4.centerClickFailed and m1TargetInRange()
+        if v4.autoAttack and os.clock() >= nextClickAt then
+            local ok, clicked = pcall(clickOnce)
+            nextClickAt = os.clock() + attackInterval()
+            if not ok then
+                v4.centerClickFailed = true
+                v4.autoAttack = false
+                v2("M1 input unavailable", tostring(clicked), 8)
             end
         end
-        task.wait(math.max(0.01, attackInterval() - (os.clock() - started)))
+        task.wait(0.05)
     end
-    v4.skillCasting = false
     v4.autoAttack = false
 end)
 -- Event observation triggers at zero; polling reconnects if the HUD changes.
