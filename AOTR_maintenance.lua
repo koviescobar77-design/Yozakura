@@ -2065,6 +2065,8 @@ end
 -- Local scheduling and validation only; these are not server damage/crit stats.
 local CombatConfig = {
     AttackInterval = 0.08,
+    M1Interval = 0.1,
+    ApproachRange = 250,
     AttemptsPerBurst = 10,
     RegularRange = 175,
     BossRange = 250,
@@ -2098,7 +2100,6 @@ local function hitBurst(target, maxDistance)
         if not v4.oldfarmEnabled or refillBlocksCombat() then break end
         if not CombatManager.CanAttack(target, maxDistance) then break end
         nextHitAt = os.clock() + CombatConfig.AttackInterval
-        v4.remotePost:FireServer("Attacks", "Slash", true)
         diagHit("Hitboxes", "Register", target, math.random(215, 230), math.random(10, 100))
         sent = sent + 1
     end
@@ -2157,6 +2158,7 @@ end;
 v3["4a"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref), v134 (ref), v136 (ref), v3 (ref)
     v4.oldfarmEnabled = not v4.oldfarmEnabled;
+    v4.m1InputError = nil
     v4.autoAttack = v4.oldfarmEnabled
     if v4.oldfarmEnabled then
         coroutine.wrap(v134)();
@@ -2166,6 +2168,40 @@ v3["4a"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         stopAutoFarm()
     end;
 end);
+-- M1 is simulated only while approaching a valid live target.
+local function approachM1()
+    if not v4.oldfarmEnabled or v4.m1InputError or refillBlocksCombat() then return false end
+    local target = v4.attackTarget or v4.nape
+    if not CombatManager.CanAttack(target, CombatConfig.ApproachRange) then return false end
+    local input = game:GetService("UserInputService")
+    if input:GetFocusedTextBox() then return false end
+    local camera = workspace.CurrentCamera
+    local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
+    if not camera or not playerGui then return false end
+    local center = camera.ViewportSize * 0.5
+    for _, object in ipairs(playerGui:GetGuiObjectsAtPosition(center.X, center.Y)) do
+        local node = object
+        while node and node ~= playerGui do
+            if node:IsA("GuiButton") or node:IsA("TextBox") then return false end
+            node = node.Parent
+        end
+    end
+    local vim = game:GetService("VirtualInputManager")
+    vim:SendMouseButtonEvent(center.X, center.Y, 0, true, game, 0)
+    vim:SendMouseButtonEvent(center.X, center.Y, 0, false, game, 0)
+    return true
+end
+task.spawn(function()
+    while v3["1"].Parent do
+        local started = os.clock()
+        local ok, err = pcall(approachM1)
+        if not ok then
+            v4.m1InputError = tostring(err)
+            v2("M1 input unavailable", "Toggle VIP Autofarm off/on to retry. " .. tostring(err), 8)
+        end
+        task.wait(math.max(0.01, CombatConfig.M1Interval - (os.clock() - started)))
+    end
+end)
 -- Event observation triggers at zero; polling reconnects if the HUD changes.
 v4.bladeEnabled = true
 v3["13"].BackgroundColor3 = Color3.new(0, 1, 0)
