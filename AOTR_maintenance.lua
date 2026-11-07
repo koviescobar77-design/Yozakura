@@ -1010,7 +1010,13 @@ local function requestRefill(manual)
         local farmingBeforeRefill = v4.oldfarmEnabled or v4.autofarmEnabled
         local ok, err = xpcall(function()
             setRefillStatus("Looking for a refill station...")
-            local station = resolveRefill()
+            local station
+            if v4.savedRefillCFrame and v4.savedRefillPlaceId == game.PlaceId
+                and v4.savedRefillTitans == workspace:FindFirstChild("Titans") then
+                station = {savedCFrame = v4.savedRefillCFrame, method = "keyR"}
+            else
+                station = resolveRefill()
+            end
             if not station then error("No supported refill station is loaded. Move near a refill station and retry.", 0) end
             local character = localPlayer.Character
             root = character and character:FindFirstChild("HumanoidRootPart")
@@ -1023,15 +1029,20 @@ local function requestRefill(manual)
                     mover.MaxForce = Vector3.zero
                 end
             end
-            local destination = station.part.Position + Vector3.new(0, 3, 0)
-            if station.prompt then
-                local host = station.prompt.Parent
-                if host and host:IsA("Attachment") then destination = host.WorldPosition + Vector3.new(0, 2, 0) end
+            local destinationCFrame = station.savedCFrame
+            if not destinationCFrame then
+                local destination = station.part.Position + Vector3.new(0, 3, 0)
+                if station.prompt then
+                    local host = station.prompt.Parent
+                    if host and host:IsA("Attachment") then destination = host.WorldPosition + Vector3.new(0, 2, 0) end
+                end
+                destinationCFrame = CFrame.new(destination)
             end
-            root.CFrame = CFrame.new(destination)
+            root.CFrame = destinationCFrame
             root.AssemblyLinearVelocity = Vector3.zero
             root.AssemblyAngularVelocity = Vector3.zero
-            setRefillStatus("At " .. station.part:GetFullName())
+            setRefillStatus(station.savedCFrame and "At saved refill location."
+                or ("At " .. station.part:GetFullName()))
             task.wait(1)
             local completed, operationError = false, nil
             local interactionThread = task.spawn(function()
@@ -1366,6 +1377,56 @@ local function stopAutoFarm(message)
     v4.farmCollisions = {}
     if message then v2("Autofarm stopped", message, 6) end
 end
+-- Fit the saved-location control inside Main, without a diagnostic overlay.
+for _, row in ipairs(v3["4"]:GetChildren()) do
+    if row:IsA("Frame") then
+        local size, position = row.Size, row.Position
+        row.Size = UDim2.new(size.X.Scale, size.X.Offset, size.Y.Scale * 0.84, size.Y.Offset)
+        row.Position = UDim2.new(position.X.Scale, position.X.Offset, position.Y.Scale * 0.84, position.Y.Offset)
+    end
+end
+local saveRefillButton = Instance.new("TextButton")
+saveRefillButton.Name = "SaveRefillLocation"
+saveRefillButton.Size = UDim2.new(0.808, 0, 0.13, 0)
+saveRefillButton.Position = UDim2.new(0.046, 0, 0.84, 0)
+saveRefillButton.BackgroundColor3 = Color3.fromRGB(40, 65, 85)
+saveRefillButton.TextColor3 = Color3.new(1, 1, 1)
+saveRefillButton.Font = Enum.Font.SourceSansBold
+saveRefillButton.TextScaled = true
+saveRefillButton.Text = "Save refill location"
+saveRefillButton.Parent = v3["4"]
+local saveCorner = Instance.new("UICorner")
+saveCorner.CornerRadius = UDim.new(0, 8)
+saveCorner.Parent = saveRefillButton
+local function clearSavedRefill()
+    v4.savedRefillCFrame = nil
+    v4.savedRefillPlaceId = nil
+    v4.savedRefillTitans = nil
+    saveRefillButton.Text = "Save refill location"
+end
+saveRefillButton.Activated:Connect(function()
+    if v4.refilling or missionResults() then
+        v2("Cannot save now", "Wait until the refill or mission results have finished.", 5)
+        return
+    end
+    if v4.oldfarmEnabled or v4.autofarmEnabled then
+        v2("Pause autofarm first", "Turn autofarm off and stand where R refills your blades, then save.", 7)
+        return
+    end
+    local character = localPlayer.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    local titans = workspace:FindFirstChild("Titans")
+    if not root or not titans then
+        v2("Location not saved", "Join a mission and wait for your character to load.", 5)
+        return
+    end
+    v4.savedRefillCFrame = root.CFrame
+    v4.savedRefillPlaceId = game.PlaceId
+    v4.savedRefillTitans = titans
+    lastRefillAttempt = -math.huge
+    saveRefillButton.Text = "Refill saved — save again"
+    v2("Refill location saved", "This position will be used for R refills in this mission. Enable Auto Refill and autofarm.", 7)
+end)
 local function requestMissionRetry(reason)
     v2("Mission retry", reason or "Sending mission retry request.", 8)
     task.spawn(function()
@@ -1393,6 +1454,7 @@ task.spawn(function()
         task.wait(0.1)
         local shown, retryText = missionResults()
         if shown then
+            if v4.savedRefillCFrame then clearSavedRefill() end
             if v4.oldfarmEnabled or v4.autofarmEnabled then
                 resultsRetryPending = not resultsHandled
                 stopAutoFarm("Mission results opened.")
