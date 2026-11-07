@@ -2077,7 +2077,7 @@ end
 
 -- Local scheduling and validation only; these are not server damage/crit stats.
 local CombatConfig = {
-    AttackInterval = 0.1,
+    AttackInterval = 0.3,
     AttemptsPerBurst = 10,
     RegularRange = 175,
     BossRange = 250,
@@ -2208,7 +2208,7 @@ task.spawn(function()
                 v2("Center input unavailable", tostring(clicked), 8)
             end
         end
-        task.wait(math.max(0.01, 0.1 - (os.clock() - started)))
+        task.wait(math.max(0.01, CombatConfig.AttackInterval - (os.clock() - started)))
     end
     v4.autoAttack = false
 end)
