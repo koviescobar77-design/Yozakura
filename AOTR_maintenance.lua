@@ -2250,7 +2250,7 @@ game:GetService("Workspace").ChildAdded:Connect(function(v88) --[[ Line: 67 ]] -
                 if v91:IsA("Model") and v91.Name ~= "Attack_Titan" then
                     local l_Nape_6 = v91:FindFirstChild("Hitboxes"):FindFirstChild("Hit"):FindFirstChild("Nape");
                     if l_Nape_6 and l_Nape_6:IsA("BasePart") then
-                        l_Nape_6.Size = Vector3.new(150, 150, 150);
+                        l_Nape_6.Size = Vector3.new(300, 300, 300);
                         l_Nape_6.Transparency = 1;
                         l_Nape_6.Position = v88.Position;
                     else
@@ -2258,7 +2258,7 @@ game:GetService("Workspace").ChildAdded:Connect(function(v88) --[[ Line: 67 ]] -
                     end;
                 end;
             end;
-            v88.Size = Vector3.new(125, 125, 125);
+            v88.Size = Vector3.new(250, 250, 250);
             local pausedTracks = {};
             local v93 = tick();
             while true do
