@@ -1829,6 +1829,29 @@ end);
 local function v46() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref)
     v4.nape = nil
+    if v4.autofarmEnabled then
+        local character = localPlayer.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        if not root or not v4.titans then return end
+        v4.character, v4.root = character, root
+        local nearest = math.huge
+        for _, titan in ipairs(v4.titans:GetChildren()) do
+            local humanoid = titan:IsA("Model") and titan:FindFirstChildOfClass("Humanoid")
+            if humanoid and humanoid.Health > 0 then
+                local target = findPath(titan, {"Hitboxes", "Hit", "Nape"})
+                if titan.Name == "Attack_Titan" then
+                    local marker = titan:FindFirstChild("Marker")
+                    local marked = marker and (marker:IsA("BillboardGui") or marker:IsA("Highlight")) and marker.Adornee
+                    if marked and marked:IsA("BasePart") and marked:IsDescendantOf(titan) then target = marked end
+                end
+                if target and target:IsA("BasePart") then
+                    local distance = (target.Position - root.Position).Magnitude
+                    if distance < nearest then nearest, v4.nape = distance, target end
+                end
+            end
+        end
+        return
+    end
     local l_huge_0 = math.huge;
     if v4.titans then
         for _, v39 in ipairs(v4.titans:GetChildren()) do
@@ -2440,6 +2463,7 @@ do
     local boundCooldown, cooldownConnection
     local sawCooldown, awaitingCooldown, blocked = false, false, false
     local sentAt, warnedMissing, warnedUnconfirmed = 0, false, false
+    local unconfirmedAttempts = 0
     local function detachCooldown()
         if cooldownConnection then cooldownConnection:Disconnect() end
         cooldownConnection, boundCooldown = nil, nil
@@ -2472,6 +2496,7 @@ do
                 detachCooldown()
                 sawCooldown, awaitingCooldown, blocked = false, false, false
                 warnedMissing, warnedUnconfirmed = false, false
+                unconfirmedAttempts = 0
             elseif not blocked then
                 local cooldown = findCooldown()
                 if cooldown ~= boundCooldown then
@@ -2494,11 +2519,16 @@ do
                     if cooldown.Visible or sawCooldown then
                         awaitingCooldown = false
                         warnedUnconfirmed = false
+                        unconfirmedAttempts = 0
                         sawCooldown = false
                     end
-                    if awaitingCooldown and os.clock() - sentAt >= 5 and not warnedUnconfirmed then
-                        warnedUnconfirmed = true
-                        v2("Slot 1 unconfirmed", "Key 1 sent, but no cooldown appeared. Waiting for cooldown confirmation; toggle OP off/on to retry.", 8)
+                    if awaitingCooldown and os.clock() - sentAt >= 3 and not cooldown.Visible then
+                        if unconfirmedAttempts < 3 then
+                            awaitingCooldown = false
+                        elseif not warnedUnconfirmed then
+                            warnedUnconfirmed = true
+                            v2("Slot 1 unconfirmed", "Three input attempts without cooldown confirmation. Waiting for cooldown; OP off/on resets attempts.", 8)
+                        end
                     end
                     local character = localPlayer.Character
                     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -2507,6 +2537,7 @@ do
                         and not refillBlocksCombat() and not missionResults()
                         and not v4.UIP:GetFocusedTextBox() then
                         awaitingCooldown = true
+                        unconfirmedAttempts = unconfirmedAttempts + 1
                         sentAt = os.clock()
                         local ok, err = pcall(function()
                             v4.VIM:SendKeyEvent(true, Enum.KeyCode.One, false, game)
@@ -2604,6 +2635,21 @@ local function regularHoverHeight(nape)
     titanHeightCache[model] = {height = height, time = os.clock()}
     return height
 end
+local function opLowHealth()
+    local character = localPlayer.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    return humanoid and humanoid.MaxHealth > 0 and humanoid.Health / humanoid.MaxHealth < 0.4
+end
+local function livingFarmTarget(target)
+    if not target or not target:IsA("BasePart") or not target:IsDescendantOf(v4.titans) then return false end
+    local ancestor = target.Parent
+    while ancestor and ancestor ~= v4.titans do
+        local humanoid = ancestor:IsA("Model") and ancestor:FindFirstChildOfClass("Humanoid")
+        if humanoid then return humanoid.Health > 0 end
+        ancestor = ancestor.Parent
+    end
+    return false
+end
 local function titanRearOffset(nape)
     local ancestor = nape.Parent
     local facing = nape.CFrame.LookVector
@@ -2617,7 +2663,8 @@ local function titanRearOffset(nape)
     end
     local horizontal = Vector3.new(facing.X, 0, facing.Z)
     if horizontal.Magnitude < 0.01 then return Vector3.zero end
-    return -horizontal.Unit * 12
+    local distance = v4.autofarmEnabled and (opLowHealth() and 50 or 35) or 12
+    return -horizontal.Unit * distance
 end
 local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref), v46 (ref)
@@ -2635,11 +2682,13 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     while farmActive() and task.wait(0.05) do
         if not farmActive() then break end
         if not refillBlocksCombat() then
+        if v4.autofarmEnabled and not livingFarmTarget(v4.attackTarget) then v4.attackTarget = nil end
         if not v4.attackTarget or not v4.attackTarget.Parent then v46() end
         if v4.attackTarget and v4.attackTarget.Parent then v4.nape = v4.attackTarget end
         if not farmActive() then break end
         if not refillBlocksCombat() then
         local v123 = regularHoverHeight(v4.nape);
+        if v4.autofarmEnabled then v123 = math.max(v123, opLowHealth() and 130 or 95) end
         if v4.titans:FindFirstChild("Attack_Titan") then
             v123 = 195;
         end;
@@ -2650,12 +2699,21 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
             end;
             local l_BG_0 = v4.root:FindFirstChild("BG");
             local v126 = v4.nape.Position + Vector3.new(0, v123, 0) + titanRearOffset(v4.nape);
+            if v4.autofarmEnabled then
+                local relative = v4.root.Position - v4.nape.Position
+                local horizontalDistance = Vector3.new(relative.X, 0, relative.Z).Magnitude
+                -- Ascend out of close contact before travelling across the Titan.
+                if horizontalDistance < 55 and relative.Y < 65 then
+                    v126 = Vector3.new(v4.root.Position.X, v126.Y, v4.root.Position.Z)
+                end
+            end
             local delta = v126 - v4.root.Position
             local l_Unit_0 = delta.Magnitude > 0.01 and delta.Unit or v4.root.CFrame.LookVector;
             local l_Magnitude_2 = (v126 - v4.root.Position).Magnitude;
             local speedGain = v4.autofarmEnabled and 8 or 5
             local speedLimit = v4.autofarmEnabled and 1000 or 500
             local v129 = math.min(l_Magnitude_2 * speedGain, speedLimit);
+            if v4.autofarmEnabled and l_Magnitude_2 < 3 then v129 = 0 end
             if l_BV_0 then
                 l_BV_0.MaxForce = Vector3.one * (v4.autofarmEnabled and 9000 or 5500);
                 l_BV_0.Velocity = l_Unit_0 * v129;
