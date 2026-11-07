@@ -2458,17 +2458,10 @@ v3["2b"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         v3["2b"].BackgroundColor3 = Color3.new(1, 0, 0);
     end;
 end);
--- OP skill 1: react to cooldown readiness, not a fixed 15-second timer.
+-- Skill 1: use detected readiness; otherwise send One once per second.
 do
-    local boundCooldown, cooldownConnection
-    local sawCooldown, awaitingCooldown, blocked = false, false, false
-    local sentAt, warnedMissing, warnedUnconfirmed = 0, false, false
-    local unconfirmedAttempts = 0
-    local function detachCooldown()
-        if cooldownConnection then cooldownConnection:Disconnect() end
-        cooldownConnection, boundCooldown = nil, nil
-    end
-    local function findCooldown()
+    local nextPressAt, inputBlocked, reportedFallback = 0, false, false
+    local function readSlotCooldown()
         local hotbar = findPath(localPlayer, {"PlayerGui", "Interface", "HUD", "Main", "Top", "Hotbar"})
         if not hotbar then return nil end
         local slot
@@ -2478,8 +2471,7 @@ do
                 slot = child
             end
         end
-        if not slot then return nil end
-        local cooldown = slot:FindFirstChild("Cooldown", true)
+        local cooldown = slot and slot:FindFirstChild("Cooldown", true)
         if not cooldown or not cooldown:IsA("GuiObject") then return nil end
         local ancestor = slot
         while ancestor and ancestor ~= localPlayer do
@@ -2487,73 +2479,41 @@ do
             if ancestor:IsA("ScreenGui") and not ancestor.Enabled then return nil end
             ancestor = ancestor.Parent
         end
-        return cooldown
+        return cooldown.Visible
     end
     task.spawn(function()
         while v3["1"].Parent do
             task.wait(0.1)
             if not v4.autofarmEnabled then
-                detachCooldown()
-                sawCooldown, awaitingCooldown, blocked = false, false, false
-                warnedMissing, warnedUnconfirmed = false, false
-                unconfirmedAttempts = 0
-            elseif not blocked then
-                local cooldown = findCooldown()
-                if cooldown ~= boundCooldown then
-                    detachCooldown()
-                    boundCooldown = cooldown
-                    if cooldown then
-                        cooldownConnection = cooldown:GetPropertyChangedSignal("Visible"):Connect(function()
-                            if cooldown.Visible then sawCooldown = true end
-                        end)
-                    end
+                nextPressAt, inputBlocked, reportedFallback = 0, false, false
+            elseif not inputBlocked then
+                local cooling = readSlotCooldown()
+                if cooling == nil and not reportedFallback then
+                    reportedFallback = true
+                    v2("Slot 1 auto-click", "Cooldown unavailable: key 1 will be sent once per second while OP Farm is active.", 6)
+                elseif cooling ~= nil then
+                    reportedFallback = false
                 end
-                if not cooldown then
-                    if not warnedMissing then
-                        warnedMissing = true
-                        v2("Slot 1 readiness unavailable", "Cooldown HUD not found. Waiting for it before sending another skill input.", 6)
-                    end
-                else
-                    warnedMissing = false
-                    -- Capture even a brief cooldown transition between polling ticks.
-                    if cooldown.Visible or sawCooldown then
-                        awaitingCooldown = false
-                        warnedUnconfirmed = false
-                        unconfirmedAttempts = 0
-                        sawCooldown = false
-                    end
-                    if awaitingCooldown and os.clock() - sentAt >= 3 and not cooldown.Visible then
-                        if unconfirmedAttempts < 3 then
-                            awaitingCooldown = false
-                        elseif not warnedUnconfirmed then
-                            warnedUnconfirmed = true
-                            v2("Slot 1 unconfirmed", "Three input attempts without cooldown confirmation. Waiting for cooldown; OP off/on resets attempts.", 8)
-                        end
-                    end
-                    local character = localPlayer.Character
-                    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-                    if not awaitingCooldown and not cooldown.Visible
-                        and humanoid and humanoid.Health > 0
-                        and not refillBlocksCombat() and not missionResults()
-                        and not v4.UIP:GetFocusedTextBox() then
-                        awaitingCooldown = true
-                        unconfirmedAttempts = unconfirmedAttempts + 1
-                        sentAt = os.clock()
-                        local ok, err = pcall(function()
-                            v4.VIM:SendKeyEvent(true, Enum.KeyCode.One, false, game)
-                            task.wait(0.08)
-                            v4.VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game)
-                        end)
-                        if not ok then
-                            pcall(function() v4.VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game) end)
-                            blocked = true
-                            v2("Thrill input failed", tostring(err), 8)
-                        end
+                local character = localPlayer.Character
+                local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+                if cooling ~= true and os.clock() >= nextPressAt
+                    and humanoid and humanoid.Health > 0
+                    and not refillBlocksCombat() and not missionResults()
+                    and not v4.UIP:GetFocusedTextBox() then
+                    nextPressAt = os.clock() + 1
+                    local ok, err = pcall(function()
+                        v4.VIM:SendKeyEvent(true, Enum.KeyCode.One, false, game)
+                        task.wait(0.08)
+                        v4.VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game)
+                    end)
+                    if not ok then
+                        pcall(function() v4.VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game) end)
+                        inputBlocked = true
+                        v2("Skill input unavailable", tostring(err) .. ". Toggle OP off/on to retry.", 8)
                     end
                 end
             end
         end
-        detachCooldown()
     end)
 end
 local startFarmWorkers
@@ -2635,11 +2595,6 @@ local function regularHoverHeight(nape)
     titanHeightCache[model] = {height = height, time = os.clock()}
     return height
 end
-local function opLowHealth()
-    local character = localPlayer.Character
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    return humanoid and humanoid.MaxHealth > 0 and humanoid.Health / humanoid.MaxHealth < 0.4
-end
 local function livingFarmTarget(target)
     if not target or not target:IsA("BasePart") or not target:IsDescendantOf(v4.titans) then return false end
     local ancestor = target.Parent
@@ -2663,8 +2618,7 @@ local function titanRearOffset(nape)
     end
     local horizontal = Vector3.new(facing.X, 0, facing.Z)
     if horizontal.Magnitude < 0.01 then return Vector3.zero end
-    local distance = v4.autofarmEnabled and (opLowHealth() and 50 or 35) or 12
-    return -horizontal.Unit * distance
+    return -horizontal.Unit * 12
 end
 local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref), v46 (ref)
@@ -2688,7 +2642,6 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         if not farmActive() then break end
         if not refillBlocksCombat() then
         local v123 = regularHoverHeight(v4.nape);
-        if v4.autofarmEnabled then v123 = math.max(v123, opLowHealth() and 130 or 95) end
         if v4.titans:FindFirstChild("Attack_Titan") then
             v123 = 195;
         end;
@@ -2699,14 +2652,6 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
             end;
             local l_BG_0 = v4.root:FindFirstChild("BG");
             local v126 = v4.nape.Position + Vector3.new(0, v123, 0) + titanRearOffset(v4.nape);
-            if v4.autofarmEnabled then
-                local relative = v4.root.Position - v4.nape.Position
-                local horizontalDistance = Vector3.new(relative.X, 0, relative.Z).Magnitude
-                -- Ascend out of close contact before travelling across the Titan.
-                if horizontalDistance < 55 and relative.Y < 65 then
-                    v126 = Vector3.new(v4.root.Position.X, v126.Y, v4.root.Position.Z)
-                end
-            end
             local delta = v126 - v4.root.Position
             local l_Unit_0 = delta.Magnitude > 0.01 and delta.Unit or v4.root.CFrame.LookVector;
             local l_Magnitude_2 = (v126 - v4.root.Position).Magnitude;
@@ -2770,7 +2715,7 @@ end
 -- Local scheduling and validation only; these are not server damage/crit stats.
 local CombatConfig = {
     AttackInterval = 0.4,
-    OPAttackInterval = 0.2,
+    OPAttackInterval = 0.4,
     AttemptsPerBurst = 10,
     RegularRange = 175,
     BossRange = 250,
@@ -2798,52 +2743,8 @@ function CombatManager.CanAttack(target, maxDistance)
     return true
 end
 local nextHitAt = 0
-local opRequestsPending = 0
-local nextOPBurstAt = 0
 local function hitBurst(target, maxDistance)
-    -- Outstanding requests remain counted even after a timeout or mode switch.
-    if opRequestsPending > 0 then return end
     v4.attackTarget = target
-    if v4.autofarmEnabled then
-        local delay = nextOPBurstAt - os.clock()
-        if delay > 0 then task.wait(delay) end
-        if not v4.autofarmEnabled or refillBlocksCombat()
-            or not CombatManager.CanAttack(target, maxDistance) then
-            v4.attackTarget = nil
-            return
-        end
-        nextOPBurstAt = os.clock() + CombatConfig.OPAttackInterval
-        local sent, firstError = 0, nil
-        -- Dispatch one bounded batch. Every coroutine captures this same target.
-        opRequestsPending = CombatConfig.AttemptsPerBurst
-        for hit = 1, CombatConfig.AttemptsPerBurst do
-            task.spawn(function()
-                local ok, err = pcall(function()
-                    if not v4.autofarmEnabled or refillBlocksCombat() then return end
-                    if not CombatManager.CanAttack(target, maxDistance) then return end
-                    sent = sent + 1
-                    diagHit("Hitboxes", "Register", target, math.random(215, 230), math.random(10, 100))
-                end)
-                if not ok and not firstError then firstError = tostring(err) end
-                opRequestsPending = opRequestsPending - 1
-            end)
-        end
-        local deadline = os.clock() + 10
-        while opRequestsPending > 0 and os.clock() < deadline do task.wait(0.03) end
-        v4.attackTarget = nil
-        if opRequestsPending > 0 then
-            stopAutoFarm("OP burst timed out. Waiting for outstanding requests; no new burst sent.")
-            return
-        end
-        if firstError then
-            stopAutoFarm("OP burst failed: " .. firstError)
-            return
-        end
-        diagDetail = "OP burst attempts sent: " .. sent .. "/" .. CombatConfig.AttemptsPerBurst
-            .. " (server-accepted damage unverified)"
-        diagShow("OP burst finished")
-        return
-    end
     local sent = 0
     for hit = 1, CombatConfig.AttemptsPerBurst do
         local delay = nextHitAt - os.clock()
