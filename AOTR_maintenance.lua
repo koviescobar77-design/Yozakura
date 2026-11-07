@@ -837,12 +837,14 @@ local function refillLabelPart(label)
     if part and part:IsA("BasePart") then return part end
     return nil
 end
+local refillRetryAfter = setmetatable({}, {__mode = "k"})
 local function resolveRefill()
     local root = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
     if not root then return nil end
     local best, bestDistance
     local function consider(part, prompt, method)
         if not part or not part:IsA("BasePart") then return end
+        if (refillRetryAfter[part] or 0) > os.clock() then return end
         local distance = (root.Position - part.Position).Magnitude
         if not bestDistance or distance < bestDistance then
             bestDistance = distance
@@ -866,7 +868,7 @@ local function resolveRefill()
             for _ = 1, 5 do
                 if not parent or parent == workspace then break end
                 local name = parent.Name:lower()
-                if name == "reload" or name == "reloads" then
+                if name == "reload" or name == "reloads" or name == "gastanks" then
                     consider(item, nil, "legacy")
                     break
                 end
@@ -1007,14 +1009,19 @@ local function requestRefill(manual)
         local suspended = {}
         local root
         local returnCFrame
+        local selectedStation
         local farmingBeforeRefill = v4.oldfarmEnabled or v4.autofarmEnabled
         local ok, err = xpcall(function()
             setRefillStatus("Looking for a refill station...")
-            if not v4.savedRefillCFrame or v4.savedRefillPlaceId ~= game.PlaceId
-                or v4.savedRefillTitans ~= workspace:FindFirstChild("Titans") then
-                error("Save a refill location in Main for this mission. Automatic station selection is disabled.", 0)
+            local station = resolveRefill()
+            if not station and v4.savedRefillCFrame and v4.savedRefillPlaceId == game.PlaceId
+                and v4.savedRefillTitans == workspace:FindFirstChild("Titans") then
+                station = {savedCFrame = v4.savedRefillCFrame, method = "keyR"}
             end
-            local station = {savedCFrame = v4.savedRefillCFrame, method = "keyR"}
+            if not station then
+                error("No available loaded refill candidate. Retrying automatically; failed stations are skipped for 30 seconds.", 0)
+            end
+            selectedStation = station
             local character = localPlayer.Character
             root = character and character:FindFirstChild("HumanoidRootPart")
             if not root or not root:IsA("BasePart") then error("Player root is missing.", 0) end
@@ -1088,7 +1095,14 @@ local function requestRefill(manual)
             end
         end
         v4.refilling = false
-        if not ok then setRefillStatus(tostring(err)) end
+        if not ok then
+            if selectedStation and selectedStation.part then
+                refillRetryAfter[selectedStation.part] = os.clock() + 30
+            end
+            setRefillStatus(tostring(err))
+        elseif selectedStation and selectedStation.part then
+            refillRetryAfter[selectedStation.part] = nil
+        end
     end)
 end
 local function guiIsShown(object)
