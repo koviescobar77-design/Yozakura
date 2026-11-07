@@ -2119,8 +2119,9 @@ local function v61() -- Refresh the current mode's regular-Titan extension.
     local multiplier = tonumber(v4.extendMulti) or 1
     if multiplier ~= multiplier then multiplier = 1 end
     multiplier = math.clamp(multiplier, 0, 5)
-    local enabled = v4.extendEnabled or v4.autofarmEnabled
-    if v4.autofarmEnabled then multiplier = math.max(3, multiplier) end
+    local farming = v4.oldfarmEnabled or v4.autofarmEnabled
+    local enabled = v4.extendEnabled or farming
+    if farming then multiplier = math.max(3, multiplier) end
     v3["19"].BackgroundColor3 = enabled and Color3.new(0, 1, 0) or Color3.new(1, 0, 0)
     v3["1f"].Text = tostring(multiplier)
     if enabled then
@@ -2609,7 +2610,7 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
             local l_Unit_0 = delta.Magnitude > 0.01 and delta.Unit or v4.root.CFrame.LookVector;
             local l_Magnitude_2 = (v126 - v4.root.Position).Magnitude;
             local speedGain = v4.autofarmEnabled and 8 or 5
-            local speedLimit = v4.autofarmEnabled and 1000 or 500
+            local speedLimit = 400
             local v129 = math.min(l_Magnitude_2 * speedGain, speedLimit);
             if v4.autofarmEnabled and l_Magnitude_2 < 3 then v129 = 0 end
             if l_BV_0 then
