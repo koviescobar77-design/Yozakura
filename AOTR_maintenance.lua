@@ -1215,6 +1215,19 @@ v3["103"].Position = UDim2.new(0.07407, 0, 0.08591, 0);
 v3["104"] = Instance.new("UIStroke", v3["101"]);
 v3["104"].Thickness = 2;
 v3["104"].Color = Color3.fromRGB(255, 255, 255);
+-- Build Auto Skill with the other mission controls, before dependency waits.
+v3.autoSkillEnabled = false
+v3.autoSkillFrame = v3["48"]:Clone()
+v3.autoSkillFrame.Name = "autoSkill"
+v3.autoSkillFrame.Parent = v3["4"]
+v3.autoSkillFrame:FindFirstChild("autoLabel").Text = "Auto Skill"
+v3.autoSkillButton = v3.autoSkillFrame:FindFirstChild("autoLabel"):FindFirstChild("autoToggle")
+v3.autoSkillButton.BackgroundColor3 = Color3.fromRGB(171, 0, 0)
+v3.autoSkillButton.Activated:Connect(function()
+    v3.autoSkillEnabled = not v3.autoSkillEnabled
+    v3.autoSkillButton.BackgroundColor3 = v3.autoSkillEnabled and Color3.new(0, 1, 0) or Color3.fromRGB(171, 0, 0)
+    if v3.onAutoSkillChanged then v3.onAutoSkillChanged(v3.autoSkillEnabled) end
+end)
 -- Unified Mission page: the existing controls retain their original callbacks.
 v3["4"].Visible = true
 v3["4"].Size = UDim2.new(0.79, 0, 0.83, 0)
@@ -1226,7 +1239,7 @@ do
         {v3["1d"], v3["3d"]},
         {v3["23"], v3["37"]},
         {v3["29"], v3["30"]},
-        {v3["48"]},
+        {v3["48"], v3.autoSkillFrame},
     }
     for rowIndex, columns in ipairs(rows) do
         for columnIndex, control in ipairs(columns) do
@@ -2595,11 +2608,9 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     v4.farmCollisions = v4.farmCollisions or {}
     local existingVelocity = v4.root:FindFirstChild("BV")
     if existingVelocity and existingVelocity:IsA("BodyVelocity") then v4.savedFarmForce = existingVelocity.MaxForce end
-    -- BodyPosition owns height; BodyVelocity owns horizontal travel only.
-    local mass = math.max(v4.root.AssemblyMass, 1)
-    v122.MaxForce = Vector3.new(0, mass * workspace.Gravity * 4, 0);
-    v122.D = mass * 20;
-    v122.P = mass * 100;
+    v122.MaxForce = Vector3.new(0, 1000, 0);
+    v122.D = 1000;
+    v122.P = 1000;
     while farmActive() and task.wait(0.05) do
         if not farmActive() then break end
         if not refillBlocksCombat() then
@@ -2615,26 +2626,19 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         if v4.nape ~= nil then
             local l_BV_0 = v4.root:FindFirstChild("BV");
             if l_BV_0 then
-                l_BV_0.MaxForce = Vector3.new(1, 0, 1) * (v4.autofarmEnabled and 9000 or 5500);
+                l_BV_0.MaxForce = Vector3.one * (v4.autofarmEnabled and 9000 or 5500);
             end;
             local l_BG_0 = v4.root:FindFirstChild("BG");
             local v126 = v4.nape.Position + Vector3.new(0, v123, 0) + titanRearOffset(v4.nape);
-            -- Preserve the configured target height, including small-Titan/boss rules.
-            if v4.root.Position.Y > v126.Y + 3 then
-                v4.root.CFrame = v4.root.CFrame + Vector3.new(0, v126.Y - v4.root.Position.Y, 0)
-                local velocity = v4.root.AssemblyLinearVelocity
-                v4.root.AssemblyLinearVelocity = Vector3.new(velocity.X, 0, velocity.Z)
-            end
-            local offset = v126 - v4.root.Position
-            local delta = Vector3.new(offset.X, 0, offset.Z)
-            local l_Unit_0 = delta.Magnitude > 0.01 and delta.Unit or Vector3.zero;
-            local l_Magnitude_2 = delta.Magnitude;
+            local delta = v126 - v4.root.Position
+            local l_Unit_0 = delta.Magnitude > 0.01 and delta.Unit or v4.root.CFrame.LookVector;
+            local l_Magnitude_2 = (v126 - v4.root.Position).Magnitude;
             local speedGain = v4.autofarmEnabled and 8 or 5
             local speedLimit = v4.autofarmEnabled and 1000 or 500
             local v129 = math.min(l_Magnitude_2 * speedGain, speedLimit);
             if v4.autofarmEnabled and l_Magnitude_2 < 3 then v129 = 0 end
             if l_BV_0 then
-                l_BV_0.MaxForce = Vector3.new(1, 0, 1) * (v4.autofarmEnabled and 9000 or 5500);
+                l_BV_0.MaxForce = Vector3.one * (v4.autofarmEnabled and 9000 or 5500);
                 l_BV_0.Velocity = l_Unit_0 * v129;
             end;
             v122.Position = Vector3.new(v122.Position.X, v126.Y, v122.Position.Z);
@@ -2854,17 +2858,9 @@ local function clickOnce()
     return true
 end
 -- Independent Auto Skill toggle below OP Autofarm.
-v4.autoSkillEnabled = false
+v4.autoSkillEnabled = v3.autoSkillEnabled == true
 v4.skillCasting = false
-local autoSkillFrame = v3["48"]:Clone()
-autoSkillFrame.Name = "autoSkill"
-autoSkillFrame.Size = v3["30"].Size
-autoSkillFrame.Position = UDim2.new(v3["30"].Position.X.Scale, v3["30"].Position.X.Offset,
-    v3["48"].Position.Y.Scale, v3["48"].Position.Y.Offset)
-autoSkillFrame.Parent = v3["30"].Parent
-local autoSkillLabel = autoSkillFrame:FindFirstChild("autoLabel")
-autoSkillLabel.Text = "Auto Skill"
-local autoSkillButton = autoSkillLabel:FindFirstChild("autoToggle")
+local autoSkillButton = v3.autoSkillButton
 local skillToggleGeneration = 0
 local skillLastAttempt = {}
 local function inputAllowed()
@@ -2876,12 +2872,12 @@ end
 local function refreshAutoSkill()
     autoSkillButton.BackgroundColor3 = v4.autoSkillEnabled and Color3.new(0, 1, 0) or Color3.fromRGB(171, 0, 0)
 end
-autoSkillButton.Activated:Connect(function()
-    v4.autoSkillEnabled = not v4.autoSkillEnabled
+v3.onAutoSkillChanged = function(enabled)
+    v4.autoSkillEnabled = enabled
     skillToggleGeneration = skillToggleGeneration + 1
     skillLastAttempt = {}
     refreshAutoSkill()
-end)
+end
 refreshAutoSkill()
 local function skillReady(slot)
     local cooldown = slot and slot:FindFirstChild("Cooldown", true)
