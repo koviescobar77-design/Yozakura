@@ -1927,7 +1927,7 @@ local function regularHoverHeight(nape)
         return 75
     end
     local cached = titanHeightCache[model]
-    if cached and os.clock() - cached.time < 1 then return cached.height, torso end
+    if cached and os.clock() - cached.time < 1 then return cached.height end
     local low, high = math.huge, -math.huge
     local count = 0
     for _, part in ipairs(model:GetDescendants()) do
@@ -1954,7 +1954,7 @@ local function regularHoverHeight(nape)
     end
     local height = count >= 3 and math.clamp((high - low) * 0.75, 40, 75) or 75
     titanHeightCache[model] = {height = height, time = os.clock()}
-    return height, torso
+    return height
 end
 local function titanRearOffset(nape)
     local ancestor = nape.Parent
@@ -1991,10 +1991,9 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         if v4.attackTarget and v4.attackTarget.Parent then v4.nape = v4.attackTarget end
         if not v4.oldfarmEnabled then break end
         if not refillBlocksCombat() then
-        local v123, bodyAnchor = regularHoverHeight(v4.nape);
+        local v123 = regularHoverHeight(v4.nape);
         if v4.titans:FindFirstChild("Attack_Titan") then
             v123 = 195;
-            bodyAnchor = nil;
         end;
         if v4.nape ~= nil then
             local l_BV_0 = v4.root:FindFirstChild("BV");
@@ -2002,10 +2001,7 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
                 l_BV_0.MaxForce = Vector3.new(5500, 5500, 5500);
             end;
             local l_BG_0 = v4.root:FindFirstChild("BG");
-            -- Standing regular Titans use their torso as the movement origin.
-            -- Nape stays the attack target; crawler/unknown posture keeps the old origin.
-            local origin = bodyAnchor and bodyAnchor.Position or v4.nape.Position
-            local v126 = origin + Vector3.new(0, v123, 0) + titanRearOffset(v4.nape);
+            local v126 = v4.nape.Position + Vector3.new(0, v123, 0) + titanRearOffset(v4.nape);
             local delta = v126 - v4.root.Position
             local l_Unit_0 = delta.Magnitude > 0.01 and delta.Unit or v4.root.CFrame.LookVector;
             local l_Magnitude_2 = (v126 - v4.root.Position).Magnitude;
