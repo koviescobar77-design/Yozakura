@@ -2694,8 +2694,52 @@ function CombatManager.CanAttack(target, maxDistance)
     return true
 end
 local nextHitAt = 0
+local opRequestsPending = 0
+local nextOPBurstAt = 0
 local function hitBurst(target, maxDistance)
+    -- Outstanding requests remain counted even after a timeout or mode switch.
+    if opRequestsPending > 0 then return end
     v4.attackTarget = target
+    if v4.autofarmEnabled then
+        local delay = nextOPBurstAt - os.clock()
+        if delay > 0 then task.wait(delay) end
+        if not v4.autofarmEnabled or refillBlocksCombat()
+            or not CombatManager.CanAttack(target, maxDistance) then
+            v4.attackTarget = nil
+            return
+        end
+        nextOPBurstAt = os.clock() + CombatConfig.OPAttackInterval
+        local sent, firstError = 0, nil
+        -- Dispatch one bounded batch. Every coroutine captures this same target.
+        opRequestsPending = CombatConfig.AttemptsPerBurst
+        for hit = 1, CombatConfig.AttemptsPerBurst do
+            task.spawn(function()
+                local ok, err = pcall(function()
+                    if not v4.autofarmEnabled or refillBlocksCombat() then return end
+                    if not CombatManager.CanAttack(target, maxDistance) then return end
+                    sent = sent + 1
+                    diagHit("Hitboxes", "Register", target, math.random(215, 230), math.random(10, 100))
+                end)
+                if not ok and not firstError then firstError = tostring(err) end
+                opRequestsPending = opRequestsPending - 1
+            end)
+        end
+        local deadline = os.clock() + 10
+        while opRequestsPending > 0 and os.clock() < deadline do task.wait(0.03) end
+        v4.attackTarget = nil
+        if opRequestsPending > 0 then
+            stopAutoFarm("OP burst timed out. Waiting for outstanding requests; no new burst sent.")
+            return
+        end
+        if firstError then
+            stopAutoFarm("OP burst failed: " .. firstError)
+            return
+        end
+        diagDetail = "OP burst attempts sent: " .. sent .. "/" .. CombatConfig.AttemptsPerBurst
+            .. " (server-accepted damage unverified)"
+        diagShow("OP burst finished")
+        return
+    end
     local sent = 0
     for hit = 1, CombatConfig.AttemptsPerBurst do
         local delay = nextHitAt - os.clock()
