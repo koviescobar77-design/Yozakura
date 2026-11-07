@@ -2478,6 +2478,7 @@ v3["32"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         v4.inputGeneration = (v4.inputGeneration or 0) + 1
         v4.autofarmEnabled = not v4.autofarmEnabled;
         v4.centerClickFailed = false
+    v4.skillInputFailed = false
         if v4.autofarmEnabled then
             v4.oldfarmEnabled = false
             v3["4a"].BackgroundColor3 = Color3.new(1, 0, 0)
@@ -2772,6 +2773,7 @@ v4.resumeConfiguredFarm = function()
     v4.oldfarmEnabled = mode == "WIP"
     v4.pendingFarmMode = nil
     v4.centerClickFailed = false
+    v4.skillInputFailed = false
     v4.farmDeadline = nil
     v3["32"].BackgroundColor3 = v4.autofarmEnabled and Color3.new(0, 1, 0) or Color3.new(1, 0, 0)
     v3["4a"].BackgroundColor3 = v4.oldfarmEnabled and Color3.new(0, 1, 0) or Color3.new(1, 0, 0)
@@ -2791,6 +2793,7 @@ v3["4a"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         v3["32"].BackgroundColor3 = Color3.new(1, 0, 0)
     end
     v4.centerClickFailed = false
+    v4.skillInputFailed = false
     v4.autoAttack = v4.oldfarmEnabled
     if v4.oldfarmEnabled then
         startFarmWorkers()
@@ -2816,11 +2819,12 @@ local function clickOnce()
     vim:SendMouseButtonEvent(position.X, position.Y, 0, false, game, 0)
     return true
 end
--- OP: M1 -> 0.4s -> slot 1 -> 0.4s. WIP retains its M1-only loop.
+-- OP: attempt M1, wait 0.4s, send skill 1, wait 0.4s.
+-- A blocked/failed mouse input must never disable keyboard skill input.
 local function farmInputAllowed()
     local character = localPlayer.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    return v3["1"].Parent and farmActive() and not v4.centerClickFailed
+    return v3["1"].Parent and farmActive()
         and humanoid and humanoid.Health > 0
         and not v4.UIP:GetFocusedTextBox() and not refillBlocksCombat()
 end
@@ -2832,23 +2836,26 @@ task.spawn(function()
         local sentSkill = false
         v4.autoAttack = farmActive() and not v4.centerClickFailed
         if farmInputAllowed() then
-            local ok, clicked = pcall(clickOnce)
-            if not ok then
-                v4.centerClickFailed = true
-                v4.autoAttack = false
-                v2("M1 input unavailable", tostring(clicked), 8)
-            elseif clicked and opCycle then
+            if not v4.centerClickFailed then
+                local ok, clicked = pcall(clickOnce)
+                if not ok then
+                    v4.centerClickFailed = true
+                    v4.autoAttack = false
+                    v2("M1 input unavailable", tostring(clicked) .. ". Skill input will continue separately.", 8)
+                end
+                -- clicked=false means UI covered the center; it does not block key 1.
+            end
+            if opCycle and not v4.skillInputFailed then
                 task.wait(0.4)
                 if generation == (v4.inputGeneration or 0) and v4.autofarmEnabled and farmInputAllowed() then
                     local skillOK, err = pcall(function()
                         v4.VIM:SendKeyEvent(true, Enum.KeyCode.One, false, game)
-                        task.wait(0.05)
+                        task.wait(0.08)
                         v4.VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game)
                     end)
                     if not skillOK then
                         pcall(function() v4.VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game) end)
-                        v4.centerClickFailed = true
-                        v4.autoAttack = false
+                        v4.skillInputFailed = true
                         v2("Skill 1 input unavailable", tostring(err) .. ". Toggle OP off/on to retry.", 8)
                     end
                     sentSkill = true
