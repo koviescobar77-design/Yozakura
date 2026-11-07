@@ -2435,48 +2435,94 @@ v3["2b"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         v3["2b"].BackgroundColor3 = Color3.new(1, 0, 0);
     end;
 end);
--- OP Autofarm uses the equipped slot 1 skill (Thrill in the user's loadout).
+-- OP skill 1: react to cooldown readiness, not a fixed 15-second timer.
 do
-    local nextAttempt, blocked, wasEnabled = 0, false, false
+    local boundCooldown, cooldownConnection
+    local sawCooldown, awaitingCooldown, blocked = false, false, false
+    local sentAt, warnedMissing, warnedUnconfirmed = 0, false, false
+    local function detachCooldown()
+        if cooldownConnection then cooldownConnection:Disconnect() end
+        cooldownConnection, boundCooldown = nil, nil
+    end
+    local function findCooldown()
+        local hotbar = findPath(localPlayer, {"PlayerGui", "Interface", "HUD", "Main", "Top", "Hotbar"})
+        if not hotbar then return nil end
+        local slot
+        for _, child in ipairs(hotbar:GetChildren()) do
+            if child.Name:lower():match("^skill[%s_]*1$") then
+                if slot then return nil end
+                slot = child
+            end
+        end
+        if not slot then return nil end
+        local cooldown = slot:FindFirstChild("Cooldown", true)
+        if not cooldown or not cooldown:IsA("GuiObject") then return nil end
+        local ancestor = slot
+        while ancestor and ancestor ~= localPlayer do
+            if ancestor:IsA("GuiObject") and not ancestor.Visible then return nil end
+            if ancestor:IsA("ScreenGui") and not ancestor.Enabled then return nil end
+            ancestor = ancestor.Parent
+        end
+        return cooldown
+    end
     task.spawn(function()
         while v3["1"].Parent do
-            task.wait(0.2)
+            task.wait(0.1)
             if not v4.autofarmEnabled then
-                nextAttempt, blocked, wasEnabled = 0, false, false
+                detachCooldown()
+                sawCooldown, awaitingCooldown, blocked = false, false, false
+                warnedMissing, warnedUnconfirmed = false, false
             elseif not blocked then
-                local hotbar = findPath(localPlayer, {"PlayerGui", "Interface", "HUD", "Main", "Top", "Hotbar"})
-                local slot
-                if hotbar then
-                    for _, child in ipairs(hotbar:GetChildren()) do
-                        if child.Name:lower():match("^skill[%s_]*1$") then slot = child; break end
+                local cooldown = findCooldown()
+                if cooldown ~= boundCooldown then
+                    detachCooldown()
+                    boundCooldown = cooldown
+                    if cooldown then
+                        cooldownConnection = cooldown:GetPropertyChangedSignal("Visible"):Connect(function()
+                            if cooldown.Visible then sawCooldown = true end
+                        end)
                     end
                 end
-                local cooldown = slot and slot:FindFirstChild("Cooldown")
-                local cooling = cooldown and cooldown:IsA("GuiObject") and cooldown.Visible
-                local character = localPlayer.Character
-                local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-                if not cooling and os.clock() >= nextAttempt and humanoid and humanoid.Health > 0
-                    and not refillBlocksCombat() and not missionResults()
-                    and not v4.UIP:GetFocusedTextBox() then
-                    -- Missing/unconfirmed HUD never prevents the first press.
-                    -- Limit retries to once per 15 seconds, including when the HUD is unavailable.
-                    nextAttempt = os.clock() + 15
-                    local ok, err = pcall(function()
-                        v4.VIM:SendKeyEvent(true, Enum.KeyCode.One, false, game)
-                        task.wait(0.08)
-                        v4.VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game)
-                    end)
-                    if not ok then
-                        pcall(function() v4.VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game) end)
-                        blocked = true
-                        v2("Thrill input failed", tostring(err), 8)
-                    elseif not wasEnabled then
-                        wasEnabled = true
-                        v2("OP Autofarm", "Slot 1 key sent. Skill activation is not yet verified.", 5)
+                if not cooldown then
+                    if not warnedMissing then
+                        warnedMissing = true
+                        v2("Slot 1 readiness unavailable", "Cooldown HUD not found. Waiting for it before sending another skill input.", 6)
+                    end
+                else
+                    warnedMissing = false
+                    -- Capture even a brief cooldown transition between polling ticks.
+                    if cooldown.Visible or sawCooldown then
+                        awaitingCooldown = false
+                        warnedUnconfirmed = false
+                        sawCooldown = false
+                    end
+                    if awaitingCooldown and os.clock() - sentAt >= 5 and not warnedUnconfirmed then
+                        warnedUnconfirmed = true
+                        v2("Slot 1 unconfirmed", "Key 1 sent, but no cooldown appeared. Waiting for cooldown confirmation; toggle OP off/on to retry.", 8)
+                    end
+                    local character = localPlayer.Character
+                    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+                    if not awaitingCooldown and not cooldown.Visible
+                        and humanoid and humanoid.Health > 0
+                        and not refillBlocksCombat() and not missionResults()
+                        and not v4.UIP:GetFocusedTextBox() then
+                        awaitingCooldown = true
+                        sentAt = os.clock()
+                        local ok, err = pcall(function()
+                            v4.VIM:SendKeyEvent(true, Enum.KeyCode.One, false, game)
+                            task.wait(0.08)
+                            v4.VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game)
+                        end)
+                        if not ok then
+                            pcall(function() v4.VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game) end)
+                            blocked = true
+                            v2("Thrill input failed", tostring(err), 8)
+                        end
                     end
                 end
             end
         end
+        detachCooldown()
     end)
 end
 local startFarmWorkers
