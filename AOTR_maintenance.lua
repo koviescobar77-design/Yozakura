@@ -2899,6 +2899,22 @@ local function reportSkillStatus(message)
         v2("Auto Skill", message, 6)
     end
 end
+local skillCooldownObservers = {}
+local function clearSkillCooldownObservers()
+    for _, observer in pairs(skillCooldownObservers) do observer.connection:Disconnect() end
+    skillCooldownObservers = {}
+end
+local function observeSkillCooldown(slot, cooldown)
+    if not cooldown:IsA("GuiObject") then return end
+    local previous = skillCooldownObservers[slot]
+    if previous and previous.cooldown == cooldown then return end
+    if previous then previous.connection:Disconnect() end
+    local connection = cooldown:GetPropertyChangedSignal("Visible"):Connect(function()
+        -- A completed cooldown is a new ready cycle, not a retry of the prior input.
+        if not cooldown.Visible then skillLastAttempt[slot] = nil end
+    end)
+    skillCooldownObservers[slot] = {cooldown = cooldown, connection = connection}
+end
 local skillSlotCache = {}
 local skillCacheDirty = true
 local cachedPlayerGui
@@ -2921,6 +2937,7 @@ local function nextSkill()
         skillCacheDirty = true
     end
     if skillCacheDirty then
+        clearSkillCooldownObservers()
         skillSlotCache = {}
         for _, object in ipairs(pg:GetDescendants()) do
             if object:IsA("GuiObject") and object.Name:lower():find("skill", 1, true)
@@ -2940,6 +2957,7 @@ local function nextSkill()
             local cooldown = slot:FindFirstChild("Cooldown", true)
             local icon = slot:FindFirstChild("Icon", true)
             if cooldown and icon then
+                observeSkillCooldown(slot, cooldown)
                 found = found + 1
                 local last = skillLastAttempt[slot] or -math.huge
                 if skillReady(slot) and os.clock() - last >= 2
@@ -2962,9 +2980,9 @@ local function clickSkill(slot)
     local heldKey
     local ok, err = pcall(function()
         local deadline = os.clock() + 2
-        while v4.attackCallInFlight and os.clock() < deadline do task.wait(0.05) end
+        while v4.attackCallInFlight and os.clock() < deadline do task.wait(0.03) end
         if v4.attackCallInFlight then return end
-        task.wait(0.15)
+        -- Begin ready-skill input immediately once the existing attack has returned.
         if not v4.autoSkillEnabled or generation ~= skillToggleGeneration or not inputAllowed() or not skillReady(slot) then return end
         skillLastAttempt[slot] = os.clock()
         for attempt = 1, 3 do
@@ -3013,13 +3031,12 @@ local function clickSkill(slot)
     if not ok then warn("Yozakura Auto Skill: " .. tostring(err)) end
 end
 task.spawn(function()
-    local nextClickAt, nextSkillAt = 0, 0
+    local nextClickAt = 0
     while v3["1"].Parent do
-        if inputAllowed() and v4.autoSkillEnabled and os.clock() >= nextSkillAt then
+        if inputAllowed() and v4.autoSkillEnabled then
             local ok, slot = pcall(nextSkill)
             if ok and slot then clickSkill(slot)
             elseif not ok then reportSkillStatus("HUD lookup error: " .. tostring(slot)) end
-            nextSkillAt = os.clock() + (ok and slot and 0.4 or 0.1)
         end
         v4.autoAttack = inputAllowed() and farmActive() and not v4.centerClickFailed and not v4.skillCasting
         if v4.autoAttack and os.clock() >= nextClickAt then
@@ -3031,10 +3048,11 @@ task.spawn(function()
                 v2("M1 input unavailable", tostring(clicked), 8)
             end
         end
-        task.wait(0.05)
+        task.wait(0.03)
     end
     if skillAddedConnection then skillAddedConnection:Disconnect() end
     if skillRemovedConnection then skillRemovedConnection:Disconnect() end
+    clearSkillCooldownObservers()
     v4.skillCasting = false
     v4.autoAttack = false
 end)
