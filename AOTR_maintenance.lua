@@ -2077,7 +2077,7 @@ end
 
 -- Local scheduling and validation only; these are not server damage/crit stats.
 local CombatConfig = {
-    AttackInterval = 0.3,
+    AttackInterval = 0.4,
     AttemptsPerBurst = 10,
     RegularRange = 175,
     BossRange = 250,
