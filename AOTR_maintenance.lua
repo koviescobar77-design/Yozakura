@@ -1381,7 +1381,7 @@ local v4 = {
     InitialX = 0,
     InitialY = 0,
     UIInitialPos = v3["2"].Position,
-    extendMulti = 1, 
+    extendMulti = 3, 
     extendEnabled = false, 
     napeVisible = true, 
     espEnabled = false, 
@@ -1992,8 +1992,8 @@ local function v61() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     if v4.extendEnabled then
         for _, v56 in pairs(v4.titans:GetChildren()) do
             if v56:IsA("Model") and v56.Name ~= "Attack_Titan" then
-                local l_Nape_1 = v56.Hitboxes.Hit.Nape;
-                if l_Nape_1 and (not v4.erenExtend or v56.Name ~= "Attack_Titan") then
+                local l_Nape_1 = findPath(v56, {"Hitboxes", "Hit", "Nape"});
+                if l_Nape_1 and l_Nape_1:IsA("BasePart") and (not v4.erenExtend or v56.Name ~= "Attack_Titan") then
                     if v4.erenExtend and v56.Name ~= "Attack_Titan" then
                         l_Nape_1.Size = Vector3.new(60, 60, 60) * v4.extendMulti;
                         l_Nape_1.Color = Color3.new(1, 1, 1);
@@ -2011,8 +2011,8 @@ local function v61() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     else
         for _, v59 in pairs(v4.titans:GetChildren()) do
             if v59:IsA("Model") then
-                local l_Nape_2 = v59.Hitboxes.Hit.Nape;
-                if l_Nape_2 then
+                local l_Nape_2 = findPath(v59, {"Hitboxes", "Hit", "Nape"});
+                if l_Nape_2 and l_Nape_2:IsA("BasePart") then
                     l_Nape_2.Size = Vector3.new(15, 9, 11);
                     l_Nape_2.Color = Color3.new(1, 0, 0);
                     l_Nape_2.Transparency = 1;
@@ -2033,11 +2033,12 @@ v3["19"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
 end);
 v3["1f"].FocusLost:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v3 (ref), v4 (ref), v61 (ref)
-    if tonumber(v3["1f"].Text) and tonumber(v3["1f"].Text) >= 0 and tonumber(v3["1f"].Text) <= 2 then
+    if tonumber(v3["1f"].Text) and tonumber(v3["1f"].Text) >= 0 and tonumber(v3["1f"].Text) <= 5 then
         v4.extendMulti = tonumber(v3["1f"].Text);
         coroutine.wrap(v61)();
     else
-        print("Please put a value between 0 and 2 for extend Multiplier");
+        v3["1f"].Text = tostring(v4.extendMulti)
+        print("Please put a value between 0 and 5 for extend Multiplier");
     end;
 end);
 v3["25"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
@@ -2551,7 +2552,7 @@ end
 
 -- Local scheduling and validation only; these are not server damage/crit stats.
 local CombatConfig = {
-    AttackInterval = 0.4,
+    AttackInterval = 0.2,
     AttemptsPerBurst = 10,
     RegularRange = 175,
     BossRange = 250,
@@ -2635,6 +2636,14 @@ local function v136() -- One attack worker, independent of frame rate.
 end
 startFarmWorkers = function()
     if not farmActive() then return end
+    -- Enable regular-Titan nape extension whenever either farm starts.
+    v4.extendEnabled = true
+    local multiplier = tonumber(v4.extendMulti) or 3
+    if multiplier ~= multiplier then multiplier = 3 end
+    v4.extendMulti = math.clamp(multiplier, 3, 5)
+    v3["1f"].Text = tostring(v4.extendMulti)
+    v3["19"].BackgroundColor3 = Color3.new(0, 1, 0)
+    v61()
     if not v4.movementWorkerRunning then
         v4.movementWorkerRunning = true
         task.spawn(function()
