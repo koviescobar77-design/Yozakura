@@ -582,7 +582,7 @@ v3["4"].BackgroundColor3 = Color3.fromRGB(255, 255, 255);
 v3["4"].Size = UDim2.new(0.73799, 0, 0.88235, 0);
 v3["4"].Position = UDim2.new(0.16179, 0, 0.11746, 0);
 v3["4"].BorderColor3 = Color3.fromRGB(0, 0, 0);
-v3["4"].Name = "mainFrame";
+v3["4"].Name = "missionFrame";
 v3["4"].BackgroundTransparency = 1;
 v3["5"] = Instance.new("Frame", v3["4"]);
 v3["5"].BorderSizePixel = 0;
@@ -974,43 +974,7 @@ v3["41"].Name = "injuryToggle";
 v3["41"].BorderColor3 = Color3.fromRGB(0, 0, 0);
 v3["41"].Position = UDim2.new(1.22011, 0, -0.00811, 0);
 v3["42"] = Instance.new("UICorner", v3["41"]);
-v3["43"] = Instance.new("Frame", v3["2"]);
-v3["43"].Visible = false;
-v3["43"].BorderSizePixel = 0;
-v3["43"].BackgroundColor3 = Color3.fromRGB(255, 255, 255);
-v3["43"].Size = UDim2.new(0.83799, 0, 0.88235, 0);
-v3["43"].Position = UDim2.new(0.16179, 0, 0.11746, 0);
-v3["43"].BorderColor3 = Color3.fromRGB(0, 0, 0);
-v3["43"].Name = "testFrame";
-v3["43"].BackgroundTransparency = 1;
-v3["44"] = Instance.new("Frame", v3["43"]);
-v3["44"].BorderSizePixel = 0;
-v3["44"].BackgroundColor3 = Color3.fromRGB(255, 255, 255);
-v3["44"].Size = UDim2.new(0.82222, 0, 0.35294, 0);
-v3["44"].Position = UDim2.new(0.1, 0, 0.47451, 0);
-v3["44"].BorderColor3 = Color3.fromRGB(0, 0, 0);
-v3["44"].Name = "warningf";
-v3["44"].BackgroundTransparency = 1;
-v3["45"] = Instance.new("TextLabel", v3["44"]);
-v3["45"].TextWrapped = true;
-v3["45"].TextStrokeTransparency = 0;
-v3["45"].BorderSizePixel = 0;
-v3["45"].TextScaled = true;
-v3["45"].BackgroundColor3 = Color3.fromRGB(255, 255, 255);
-v3["45"].TextSize = 14;
-v3["45"].FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal);
-v3["45"].TextColor3 = Color3.fromRGB(255, 255, 255);
-v3["45"].BackgroundTransparency = 1;
-v3["45"].Size = UDim2.new(0.92703, 0, 0.74444, 0);
-v3["45"].BorderColor3 = Color3.fromRGB(0, 0, 0);
-v3["45"].Text = "These features are in testing and may ban you, use at your own risk.";
-v3["45"].Name = "warning";
-v3["45"].Position = UDim2.new(0.03455, 0, 0.12444, 0);
-v3["46"] = Instance.new("UIStroke", v3["44"]);
-v3["46"].Thickness = 2;
-v3["46"].Color = Color3.fromRGB(255, 255, 255);
-v3["47"] = Instance.new("UICorner", v3["44"]);
-v3["48"] = Instance.new("Frame", v3["43"]);
+v3["48"] = Instance.new("Frame", v3["4"]);
 v3["48"].BorderSizePixel = 0;
 v3["48"].BackgroundColor3 = Color3.fromRGB(255, 255, 255);
 v3["48"].Size = UDim2.new(0.38248, 0, 0.15262, 0);
@@ -1068,41 +1032,15 @@ v3["56"].BackgroundColor3 = Color3.fromRGB(255, 255, 255);
 v3["56"].FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal);
 v3["56"].Size = UDim2.new(0.97418, 0, 0.54001, 0);
 v3["56"].BackgroundTransparency = 1;
-v3["56"].Name = "mainButton";
+v3["56"].Name = "missionButton";
 v3["56"].BorderColor3 = Color3.fromRGB(0, 0, 0);
-v3["56"].Text = "Main";
+v3["56"].Text = "Mission";
 v3["56"].Position = UDim2.new(0.00582, 0, 0.18376, 0);
 v3["57"] = Instance.new("UICorner", v3["55"]);
 v3["57"].CornerRadius = UDim.new(0, 16);
 v3["58"] = Instance.new("UIStroke", v3["55"]);
 v3["58"].Name = "stroke";
 v3["58"].Color = Color3.fromRGB(255, 255, 255);
-v3["59"] = Instance.new("Frame", v3["2"]);
-v3["59"].BorderSizePixel = 0;
-v3["59"].BackgroundColor3 = Color3.fromRGB(41, 41, 41);
-v3["59"].Size = UDim2.new(0.16026, 0, 0.15223, 0);
-v3["59"].Position = UDim2.new(0.0194, 0, 0.35129, 0);
-v3["59"].BorderColor3 = Color3.fromRGB(0, 0, 0);
-v3["59"].Name = "testB";
-v3["5a"] = Instance.new("UICorner", v3["59"]);
-v3["5a"].CornerRadius = UDim.new(0, 16);
-v3["5b"] = Instance.new("UIStroke", v3["59"]);
-v3["5b"].Name = "stroke";
-v3["5b"].Color = Color3.fromRGB(100, 100, 100);
-v3["5c"] = Instance.new("TextButton", v3["59"]);
-v3["5c"].TextWrapped = true;
-v3["5c"].BorderSizePixel = 0;
-v3["5c"].TextSize = 14;
-v3["5c"].TextColor3 = Color3.fromRGB(255, 255, 255);
-v3["5c"].TextScaled = true;
-v3["5c"].BackgroundColor3 = Color3.fromRGB(255, 255, 255);
-v3["5c"].FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal);
-v3["5c"].Size = UDim2.new(0.97902, 0, 0.54958, 0);
-v3["5c"].BackgroundTransparency = 1;
-v3["5c"].Name = "riskyButton";
-v3["5c"].BorderColor3 = Color3.fromRGB(0, 0, 0);
-v3["5c"].Text = "Testing";
-v3["5c"].Position = UDim2.new(9.8E-4, 0, 0.22412, 0);
 v3["5d"] = Instance.new("Frame", v3["2"]);
 v3["5d"].BorderSizePixel = 0;
 v3["5d"].BackgroundColor3 = Color3.fromRGB(41, 41, 41);
@@ -1277,20 +1215,33 @@ v3["103"].Position = UDim2.new(0.07407, 0, 0.08591, 0);
 v3["104"] = Instance.new("UIStroke", v3["101"]);
 v3["104"].Thickness = 2;
 v3["104"].Color = Color3.fromRGB(255, 255, 255);
-v3["5c"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
-    -- upvalues: v3 (ref)
-    v3["4"].Visible = false;
-    v3["58"].Color = Color3.fromRGB(100, 100, 100);
-    v3["43"].Visible = true;
-    v3["5b"].Color = Color3.fromRGB(255, 255, 255);
-end);
-v3["56"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
-    -- upvalues: v3 (ref)
-    v3["43"].Visible = false;
-    v3["4"].Visible = true;
-    v3["58"].Color = Color3.fromRGB(255, 255, 255);
-    v3["5b"].Color = Color3.fromRGB(100, 100, 100);
-end);
+-- Unified Mission page: the existing controls retain their original callbacks.
+v3["4"].Visible = true
+v3["4"].Size = UDim2.new(0.79, 0, 0.83, 0)
+v3["4"].Position = UDim2.new(0.19, 0, 0.16, 0)
+do
+    local rows = {
+        {v3["5"], v3.b},
+        {v3["17"], v3["11"]},
+        {v3["1d"], v3["3d"]},
+        {v3["23"], v3["37"]},
+        {v3["29"], v3["30"]},
+        {v3["48"]},
+    }
+    for rowIndex, columns in ipairs(rows) do
+        for columnIndex, control in ipairs(columns) do
+            control.Size = UDim2.new(0.455, 0, 0.115, 0)
+            control.Position = UDim2.new(0.015 + (columnIndex - 1) * 0.49, 0,
+                0.015 + (rowIndex - 1) * 0.135, 0)
+        end
+    end
+end
+v3["55"].Name = "missionB"
+v3["5d"].Position = UDim2.new(0.0194, 0, 0.43, 0)
+v3["62"].Position = UDim2.new(0.0194, 0, 0.70, 0)
+v3["56"].Activated:Connect(function()
+    v3["4"].Visible = true
+end)
 v3["65"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v3 (ref)
     v3["1"].Enabled = false;
@@ -1886,18 +1837,11 @@ local function stopAutoFarm(message)
     v4.farmCollisions = {}
     if message then v2("Autofarm stopped", message, 6) end
 end
--- Fit the saved-location control inside Main, without a diagnostic overlay.
-for _, row in ipairs(v3["4"]:GetChildren()) do
-    if row:IsA("Frame") then
-        local size, position = row.Size, row.Position
-        row.Size = UDim2.new(size.X.Scale, size.X.Offset, size.Y.Scale * 0.84, size.Y.Offset)
-        row.Position = UDim2.new(position.X.Scale, position.X.Offset, position.Y.Scale * 0.84, position.Y.Offset)
-    end
-end
+-- Saved refill control below the six Mission rows.
 local saveRefillButton = Instance.new("TextButton")
 saveRefillButton.Name = "SaveRefillLocation"
-saveRefillButton.Size = UDim2.new(0.808, 0, 0.13, 0)
-saveRefillButton.Position = UDim2.new(0.046, 0, 0.84, 0)
+saveRefillButton.Size = UDim2.new(0.945, 0, 0.12, 0)
+saveRefillButton.Position = UDim2.new(0.015, 0, 0.84, 0)
 saveRefillButton.BackgroundColor3 = Color3.fromRGB(40, 65, 85)
 saveRefillButton.TextColor3 = Color3.new(1, 1, 1)
 saveRefillButton.Font = Enum.Font.SourceSansBold
