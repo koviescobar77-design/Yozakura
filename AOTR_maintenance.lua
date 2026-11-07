@@ -2459,7 +2459,7 @@ v3["2b"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         v3["2b"].BackgroundColor3 = Color3.new(1, 0, 0);
     end;
 end);
--- Skill 1 is sequenced with M1 by the single input worker below.
+-- Equipped skills are sequenced with M1 by the single input worker below.
 local startFarmWorkers
 local function farmActive()
     return v4.oldfarmEnabled or v4.autofarmEnabled
@@ -2819,8 +2819,7 @@ local function clickOnce()
     vim:SendMouseButtonEvent(position.X, position.Y, 0, false, game, 0)
     return true
 end
--- OP: attempt M1, wait 0.4s, send skill 1, wait 0.4s.
--- A blocked/failed mouse input must never disable keyboard skill input.
+-- One input worker owns both M1 and equipped-skill key presses.
 local function farmInputAllowed()
     local character = localPlayer.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -2828,46 +2827,101 @@ local function farmInputAllowed()
         and humanoid and humanoid.Health > 0
         and not v4.UIP:GetFocusedTextBox() and not refillBlocksCombat()
 end
+local skillKeys = {
+    Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three,
+    Enum.KeyCode.Four, Enum.KeyCode.Five,
+}
+local skillStates = setmetatable({}, {__mode = "k"})
+local skillGeneration
+local function nextReadySkill()
+    local generation = v4.inputGeneration or 0
+    if skillGeneration ~= generation then
+        skillGeneration = generation
+        skillStates = setmetatable({}, {__mode = "k"})
+    end
+    local hotbar = findPath(localPlayer, {"PlayerGui", "Interface", "HUD", "Main", "Top", "Hotbar"})
+    if not hotbar then return nil end
+    local candidate
+    for _, slot in ipairs(hotbar:GetChildren()) do
+        local number = tonumber(slot.Name:match("^Skill[%s_]*(%d+)$"))
+        local inner = slot:FindFirstChild("Inner")
+        local icon = inner and inner:FindFirstChild("Icon")
+        local cooldown = slot:FindFirstChild("Cooldown")
+        if number and skillKeys[number] and icon
+            and (icon:IsA("ImageLabel") or icon:IsA("ImageButton"))
+            and icon.Image ~= "" and icon.Image ~= "rbxassetid://0"
+            and cooldown and cooldown:IsA("GuiObject") then
+            local visible = true
+            local ancestor = slot
+            while ancestor and ancestor ~= localPlayer do
+                if ancestor:IsA("GuiObject") and not ancestor.Visible then visible = false break end
+                if ancestor:IsA("ScreenGui") and not ancestor.Enabled then visible = false break end
+                ancestor = ancestor.Parent
+            end
+            local state = skillStates[slot]
+            if not state or state.icon ~= icon.Image or state.cooldown ~= cooldown then
+                state = {icon = icon.Image, cooldown = cooldown, attempted = false}
+                skillStates[slot] = state
+            end
+            -- Re-arm only after a cooldown was observed, never spam an unconfirmed cast.
+            if cooldown.Visible then state.attempted = false end
+            if visible and not cooldown.Visible and not state.attempted
+                and (not candidate or number < candidate.number) then
+                candidate = {number = number, key = skillKeys[number], state = state,
+                    slot = slot, icon = icon, cooldown = cooldown}
+            end
+        end
+    end
+    return candidate
+end
 task.spawn(function()
     while v3["1"].Parent do
         local started = os.clock()
-        local opCycle = v4.autofarmEnabled
         local generation = v4.inputGeneration or 0
-        local sentSkill = false
-        v4.autoAttack = farmActive() and not v4.centerClickFailed
+        local usedSkill = false
+        v4.autoAttack = farmInputAllowed() and not v4.centerClickFailed
         if farmInputAllowed() then
-            if not v4.centerClickFailed then
+            local skill = v4.autofarmEnabled and not v4.skillInputFailed and nextReadySkill()
+            if skill then
+                usedSkill = true
+                v4.skillCasting = true
+                v4.autoAttack = false
+                -- No M1 is sent during the pause, key press, or recovery.
+                task.wait(0.4)
+                if generation == (v4.inputGeneration or 0) and v4.autofarmEnabled
+                    and farmInputAllowed() and skill.slot.Parent and skill.cooldown.Parent
+                    and not skill.cooldown.Visible and skill.icon.Image == skill.state.icon then
+                    skill.state.attempted = true
+                    local ok, err = pcall(function()
+                        v4.VIM:SendKeyEvent(true, skill.key, false, game)
+                        task.wait(0.08)
+                        v4.VIM:SendKeyEvent(false, skill.key, false, game)
+                    end)
+                    -- Always release the key, including when the press failed.
+                    pcall(function() v4.VIM:SendKeyEvent(false, skill.key, false, game) end)
+                    if not ok then
+                        v4.skillInputFailed = true
+                        v2("Skill input unavailable", tostring(err) .. ". Toggle OP off/on to retry.", 8)
+                    end
+                    task.wait(0.4)
+                end
+                v4.skillCasting = false
+            elseif not v4.centerClickFailed then
                 local ok, clicked = pcall(clickOnce)
                 if not ok then
                     v4.centerClickFailed = true
                     v4.autoAttack = false
                     v2("M1 input unavailable", tostring(clicked) .. ". Skill input will continue separately.", 8)
                 end
-                -- clicked=false means UI covered the center; it does not block key 1.
-            end
-            if opCycle and not v4.skillInputFailed then
-                task.wait(0.4)
-                if generation == (v4.inputGeneration or 0) and v4.autofarmEnabled and farmInputAllowed() then
-                    local skillOK, err = pcall(function()
-                        v4.VIM:SendKeyEvent(true, Enum.KeyCode.One, false, game)
-                        task.wait(0.08)
-                        v4.VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game)
-                    end)
-                    if not skillOK then
-                        pcall(function() v4.VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game) end)
-                        v4.skillInputFailed = true
-                        v2("Skill 1 input unavailable", tostring(err) .. ". Toggle OP off/on to retry.", 8)
-                    end
-                    sentSkill = true
-                end
             end
         end
-        if sentSkill then
-            task.wait(0.4)
+        if usedSkill then
+            task.wait(0.05)
         else
             task.wait(math.max(0.01, attackInterval() - (os.clock() - started)))
         end
     end
+    v4.skillCasting = false
     v4.autoAttack = false
 end)
 -- Event observation triggers at zero; polling reconnects if the HUD changes.
@@ -2950,96 +3004,4 @@ task.spawn(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         end;
     end;
 end);
-task.wait(15);
-local function v151() --[[ Line: 67 ]] --[[ Name: 25ms ]]
-    -- upvalues: v4 (ref)
-    v4.hotbar = findPath(localPlayer, {"PlayerGui", "Interface", "HUD", "Main", "Top", "Hotbar"})
-    if not v4.hotbar then
-        v2("Cooldown monitoring unavailable", "The configured hotbar path is missing. Other initialization can continue.", 8)
-        return
-    end
-    for _, v148 in pairs(v4.hotbar:GetChildren()) do
-        if v148.Name:find("Skill") then
-            local l_Icon_0 = v148.Inner.Icon;
-            local l_Cooldown_0 = v148.Cooldown;
-            if l_Icon_0.Image == "rbxassetid://15215081865" then
-                if v148.Name:find("1") then
-                    v4.cooldownS = l_Cooldown_0;
-                elseif v148.Name:find("2") then
-                    v4.cooldownS = l_Cooldown_0;
-                elseif v148.Name:find("3") then
-                    v4.cooldownS = l_Cooldown_0;
-                elseif v148.Name:find("4") then
-                    v4.cooldownS = l_Cooldown_0;
-                elseif v148.Name:find("5") then
-                    v4.cooldownS = l_Cooldown_0;
-                end;
-            elseif l_Icon_0.Image == "rbxassetid://15215073606" then
-                if v148.Name:find("1") then
-                    v4.cooldownT = l_Cooldown_0;
-                elseif v148.Name:find("2") then
-                    v4.cooldownT = l_Cooldown_0;
-                elseif v148.Name:find("3") then
-                    v4.cooldownT = l_Cooldown_0;
-                elseif v148.Name:find("4") then
-                    v4.cooldownT = l_Cooldown_0;
-                elseif v148.Name:find("5") then
-                    v4.cooldownT = l_Cooldown_0;
-                end;
-            elseif l_Icon_0.Image == "rbxassetid://15216496277" then
-                if v148.Name:find("1") then
-                    v4.cooldownR = l_Cooldown_0;
-                elseif v148.Name:find("2") then
-                    v4.cooldownR = l_Cooldown_0;
-                elseif v148.Name:find("3") then
-                    v4.cooldownR = l_Cooldown_0;
-                elseif v148.Name:find("4") then
-                    v4.cooldownR = l_Cooldown_0;
-                elseif v148.Name:find("5") then
-                    v4.cooldownR = l_Cooldown_0;
-                end;
-            else
-                if l_Icon_0.Image ~= "rbxassetid://15215073606" or not "rbxassetid://15215081865" then
-
-                end;
-                print("Skill is being passed.");
-            end;
-        else
-            print("Child is not a skill");
-        end;
-    end;
-end;
-if v4.passed then
-    coroutine.wrap(v151)();
-end;
-print("defined");
-if v4.cooldownT ~= nil then
-    v4.cooldownT:GetPropertyChangedSignal("Visible"):Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
-        -- upvalues: v4 (ref), v108 (ref)
-        if v4.passed and v4.autofarmEnabled and v4.cooldownT.Visible == false then
-            coroutine.wrap(v108)();
-        end;
-    end);
-else
-    print("Thrust not equipped");
-end;
-if v4.cooldownS ~= nil then
-    v4.cooldownS:GetPropertyChangedSignal("Visible"):Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
-        -- upvalues: v4 (ref), v108 (ref)
-        if v4.passed and v4.autofarmEnabled and v4.cooldownS.Visible == false then
-            coroutine.wrap(v108)();
-        end;
-    end);
-else
-    print("Steel not equipped");
-end;
-if v4.cooldownR ~= nil then
-    v4.cooldownR:GetPropertyChangedSignal("Visible"):Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
-        -- upvalues: v4 (ref), v108 (ref)
-        if v4.passed and v4.autofarmEnabled and v4.cooldownR.Visible == false then
-            coroutine.wrap(v108)();
-        end;
-    end);
-else
-    print("Let it RIP not equipped");
-end;
+-- Equipped skill cooldowns are monitored by the input worker above.
