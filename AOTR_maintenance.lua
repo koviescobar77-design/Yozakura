@@ -1909,6 +1909,46 @@ v3["32"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         v2("Premium", "Feature locked, check discord.");
     end;
 end);
+-- Estimate visible body height without enlarged hitboxes or accessories.
+local titanHeightCache = setmetatable({}, {__mode = "k"})
+local function regularHoverHeight(nape)
+    if not nape or not nape.Parent then return 75 end
+    local model = nape.Parent
+    while model and model ~= v4.titans do
+        if model:IsA("Model") and model:FindFirstChildOfClass("Humanoid") then break end
+        model = model.Parent
+    end
+    if not model or model == v4.titans then return 75 end
+    local cached = titanHeightCache[model]
+    if cached and os.clock() - cached.time < 1 then return cached.height end
+    local low, high = math.huge, -math.huge
+    local count = 0
+    for _, part in ipairs(model:GetDescendants()) do
+        if part:IsA("BasePart") and part.Transparency < 1 then
+            local excluded = false
+            local parent = part
+            while parent and parent ~= model do
+                if parent.Name:lower():find("hitbox", 1, true) or parent:IsA("Accessory") then
+                    excluded = true
+                    break
+                end
+                parent = parent.Parent
+            end
+            if not excluded then
+                local cf, size = part.CFrame, part.Size
+                local halfY = (math.abs(cf.RightVector.Y) * size.X
+                    + math.abs(cf.UpVector.Y) * size.Y
+                    + math.abs(cf.LookVector.Y) * size.Z) * 0.5
+                low = math.min(low, part.Position.Y - halfY)
+                high = math.max(high, part.Position.Y + halfY)
+                count = count + 1
+            end
+        end
+    end
+    local height = count >= 3 and math.clamp((high - low) * 0.75, 40, 75) or 75
+    titanHeightCache[model] = {height = height, time = os.clock()}
+    return height
+end
 local function titanRearOffset(nape)
     local ancestor = nape.Parent
     local facing = nape.CFrame.LookVector
@@ -1944,7 +1984,7 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         if v4.attackTarget and v4.attackTarget.Parent then v4.nape = v4.attackTarget end
         if not v4.oldfarmEnabled then break end
         if not refillBlocksCombat() then
-        local v123 = 75;
+        local v123 = regularHoverHeight(v4.nape);
         if v4.titans:FindFirstChild("Attack_Titan") then
             v123 = 195;
         end;
