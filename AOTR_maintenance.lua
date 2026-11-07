@@ -1919,6 +1919,13 @@ local function regularHoverHeight(nape)
         model = model.Parent
     end
     if not model or model == v4.titans then return 75 end
+    -- Only apply smaller-target height when the torso is clearly upright.
+    -- Unknown posture keeps the original height instead of assuming standing.
+    if model.Name:lower():find("crawl", 1, true) then return 75 end
+    local torso = model:FindFirstChild("UpperTorso", true) or model:FindFirstChild("Torso", true)
+    if not torso or not torso:IsA("BasePart") or torso.CFrame.UpVector.Y < 0.7 then
+        return 75
+    end
     local cached = titanHeightCache[model]
     if cached and os.clock() - cached.time < 1 then return cached.height end
     local low, high = math.huge, -math.huge
