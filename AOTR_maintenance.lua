@@ -1381,7 +1381,7 @@ local v4 = {
     InitialX = 0,
     InitialY = 0,
     UIInitialPos = v3["2"].Position,
-    extendMulti = 3, 
+    extendMulti = 1, 
     extendEnabled = false, 
     napeVisible = true, 
     espEnabled = false, 
@@ -1804,6 +1804,7 @@ end
 local function stopAutoFarm(message)
     v4.oldfarmEnabled = false
     v4.autofarmEnabled = false
+    if v4.refreshNapeExtension then v4.refreshNapeExtension() end
     v4.autoAttack = false
     v4.nape = nil
     v4.attackTarget = nil
@@ -1987,20 +1988,26 @@ if v4.espEnabled == true then
     v3["7"].BackgroundColor3 = Color3.new(0, 1, 0);
     v54();
 end;
-local function v61() --[[ Line: 67 ]] --[[ Name: 25ms ]]
-    -- upvalues: v4 (ref)
-    if v4.extendEnabled then
+local function v61() -- Refresh the current mode's regular-Titan extension.
+    local multiplier = tonumber(v4.extendMulti) or 1
+    if multiplier ~= multiplier then multiplier = 1 end
+    multiplier = math.clamp(multiplier, 0, 5)
+    local enabled = v4.extendEnabled or v4.autofarmEnabled
+    if v4.autofarmEnabled then multiplier = math.max(3, multiplier) end
+    v3["19"].BackgroundColor3 = enabled and Color3.new(0, 1, 0) or Color3.new(1, 0, 0)
+    v3["1f"].Text = tostring(multiplier)
+    if enabled then
         for _, v56 in pairs(v4.titans:GetChildren()) do
             if v56:IsA("Model") and v56.Name ~= "Attack_Titan" then
                 local l_Nape_1 = findPath(v56, {"Hitboxes", "Hit", "Nape"});
                 if l_Nape_1 and l_Nape_1:IsA("BasePart") and (not v4.erenExtend or v56.Name ~= "Attack_Titan") then
                     if v4.erenExtend and v56.Name ~= "Attack_Titan" then
-                        l_Nape_1.Size = Vector3.new(60, 60, 60) * v4.extendMulti;
+                        l_Nape_1.Size = Vector3.new(60, 60, 60) * multiplier;
                         l_Nape_1.Color = Color3.new(1, 1, 1);
                         l_Nape_1.Material = Enum.Material.Neon;
                         l_Nape_1.Transparency = 0.96;
                     elseif not v4.erenExtend then
-                        l_Nape_1.Size = Vector3.new(60, 60, 60) * v4.extendMulti;
+                        l_Nape_1.Size = Vector3.new(60, 60, 60) * multiplier;
                         l_Nape_1.Color = Color3.new(1, 1, 1);
                         l_Nape_1.Material = Enum.Material.Neon;
                         l_Nape_1.Transparency = 0.96;
@@ -2021,6 +2028,7 @@ local function v61() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         end;
     end;
 end;
+v4.refreshNapeExtension = v61
 v3["19"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref), v61 (ref), v3 (ref)
     v4.extendEnabled = not v4.extendEnabled;
@@ -2489,16 +2497,18 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         if v4.nape ~= nil then
             local l_BV_0 = v4.root:FindFirstChild("BV");
             if l_BV_0 then
-                l_BV_0.MaxForce = Vector3.new(5500, 5500, 5500);
+                l_BV_0.MaxForce = Vector3.one * (v4.autofarmEnabled and 9000 or 5500);
             end;
             local l_BG_0 = v4.root:FindFirstChild("BG");
             local v126 = v4.nape.Position + Vector3.new(0, v123, 0) + titanRearOffset(v4.nape);
             local delta = v126 - v4.root.Position
             local l_Unit_0 = delta.Magnitude > 0.01 and delta.Unit or v4.root.CFrame.LookVector;
             local l_Magnitude_2 = (v126 - v4.root.Position).Magnitude;
-            local v129 = math.min(l_Magnitude_2 * 5, 500);
+            local speedGain = v4.autofarmEnabled and 8 or 5
+            local speedLimit = v4.autofarmEnabled and 800 or 500
+            local v129 = math.min(l_Magnitude_2 * speedGain, speedLimit);
             if l_BV_0 then
-                l_BV_0.MaxForce = Vector3.new(5500, 5500, 5500);
+                l_BV_0.MaxForce = Vector3.one * (v4.autofarmEnabled and 9000 or 5500);
                 l_BV_0.Velocity = l_Unit_0 * v129;
             end;
             v122.Position = Vector3.new(v122.Position.X, v126.Y, v122.Position.Z);
@@ -2552,11 +2562,15 @@ end
 
 -- Local scheduling and validation only; these are not server damage/crit stats.
 local CombatConfig = {
-    AttackInterval = 0.2,
+    AttackInterval = 0.4,
+    OPAttackInterval = 0.2,
     AttemptsPerBurst = 10,
     RegularRange = 175,
     BossRange = 250,
 }
+local function attackInterval()
+    return v4.autofarmEnabled and CombatConfig.OPAttackInterval or CombatConfig.AttackInterval
+end
 local CombatManager = {}
 function CombatManager.CanAttack(target, maxDistance)
     local character = localPlayer.Character
@@ -2585,7 +2599,7 @@ local function hitBurst(target, maxDistance)
         if delay > 0 then task.wait(delay) end
         if not farmActive() or refillBlocksCombat() then break end
         if not CombatManager.CanAttack(target, maxDistance) then break end
-        nextHitAt = os.clock() + CombatConfig.AttackInterval
+        nextHitAt = os.clock() + attackInterval()
         diagHit("Hitboxes", "Register", target, math.random(215, 230), math.random(10, 100))
         sent = sent + 1
     end
@@ -2628,7 +2642,7 @@ local function v136() -- One attack worker, independent of frame rate.
             diagShow("Stopped after error")
             return
         end
-        local targetInterval = CombatConfig.AttackInterval
+        local targetInterval = attackInterval()
         task.wait(math.max(0.01, targetInterval - (os.clock() - iterationStarted)))
     end
     v4.combatWorkerRunning = false
@@ -2636,13 +2650,7 @@ local function v136() -- One attack worker, independent of frame rate.
 end
 startFarmWorkers = function()
     if not farmActive() then return end
-    -- Enable regular-Titan nape extension whenever either farm starts.
-    v4.extendEnabled = true
-    local multiplier = tonumber(v4.extendMulti) or 3
-    if multiplier ~= multiplier then multiplier = 3 end
-    v4.extendMulti = math.clamp(multiplier, 3, 5)
-    v3["1f"].Text = tostring(v4.extendMulti)
-    v3["19"].BackgroundColor3 = Color3.new(0, 1, 0)
+    -- OP extension is temporary; manual WIP settings remain separate.
     v61()
     if not v4.movementWorkerRunning then
         v4.movementWorkerRunning = true
@@ -2661,7 +2669,11 @@ if farmActive() then
 end;
 v3["4a"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref), v134 (ref), v136 (ref), v3 (ref)
-    v4.oldfarmEnabled = not farmActive();
+    v4.oldfarmEnabled = not v4.oldfarmEnabled
+    if v4.oldfarmEnabled then
+        v4.autofarmEnabled = false
+        v3["32"].BackgroundColor3 = Color3.new(1, 0, 0)
+    end
     v4.centerClickFailed = false
     v4.autoAttack = v4.oldfarmEnabled
     if v4.oldfarmEnabled then
@@ -2700,7 +2712,7 @@ task.spawn(function()
                 v2("Center input unavailable", tostring(clicked), 8)
             end
         end
-        task.wait(math.max(0.01, CombatConfig.AttackInterval - (os.clock() - started)))
+        task.wait(math.max(0.01, attackInterval() - (os.clock() - started)))
     end
     v4.autoAttack = false
 end)
