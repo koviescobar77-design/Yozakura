@@ -1010,14 +1010,11 @@ local function requestRefill(manual)
         local farmingBeforeRefill = v4.oldfarmEnabled or v4.autofarmEnabled
         local ok, err = xpcall(function()
             setRefillStatus("Looking for a refill station...")
-            local station
-            if v4.savedRefillCFrame and v4.savedRefillPlaceId == game.PlaceId
-                and v4.savedRefillTitans == workspace:FindFirstChild("Titans") then
-                station = {savedCFrame = v4.savedRefillCFrame, method = "keyR"}
-            else
-                station = resolveRefill()
+            if not v4.savedRefillCFrame or v4.savedRefillPlaceId ~= game.PlaceId
+                or v4.savedRefillTitans ~= workspace:FindFirstChild("Titans") then
+                error("Save a refill location in Main for this mission. Automatic station selection is disabled.", 0)
             end
-            if not station then error("No supported refill station is loaded. Move near a refill station and retry.", 0) end
+            local station = {savedCFrame = v4.savedRefillCFrame, method = "keyR"}
             local character = localPlayer.Character
             root = character and character:FindFirstChild("HumanoidRootPart")
             if not root or not root:IsA("BasePart") then error("Player root is missing.", 0) end
@@ -1912,6 +1909,21 @@ v3["32"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         v2("Premium", "Feature locked, check discord.");
     end;
 end);
+local function titanRearOffset(nape)
+    local ancestor = nape.Parent
+    local facing = nape.CFrame.LookVector
+    while ancestor and ancestor ~= v4.titans do
+        if ancestor:IsA("Model") and ancestor:FindFirstChildOfClass("Humanoid") then
+            local root = ancestor:FindFirstChild("HumanoidRootPart") or ancestor.PrimaryPart
+            if root and root:IsA("BasePart") then facing = root.CFrame.LookVector end
+            break
+        end
+        ancestor = ancestor.Parent
+    end
+    local horizontal = Vector3.new(facing.X, 0, facing.Z)
+    if horizontal.Magnitude < 0.01 then return Vector3.zero end
+    return -horizontal.Unit * 12
+end
 local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref), v46 (ref)
     local existingHover = v4.root:FindFirstChild("BodyPosition")
@@ -1942,7 +1954,7 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
                 l_BV_0.MaxForce = Vector3.new(5500, 5500, 5500);
             end;
             local l_BG_0 = v4.root:FindFirstChild("BG");
-            local v126 = v4.nape.Position + Vector3.new(0, v123, 0);
+            local v126 = v4.nape.Position + Vector3.new(0, v123, 0) + titanRearOffset(v4.nape);
             local delta = v126 - v4.root.Position
             local l_Unit_0 = delta.Magnitude > 0.01 and delta.Unit or v4.root.CFrame.LookVector;
             local l_Magnitude_2 = (v126 - v4.root.Position).Magnitude;
