@@ -2459,7 +2459,7 @@ v3["2b"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         v3["2b"].BackgroundColor3 = Color3.new(1, 0, 0);
     end;
 end);
--- Skill 1 is sequenced with M1 by the single input worker below.
+-- Skill keys 1 and 2 alternate in the single M1 input worker below.
 local startFarmWorkers
 local function farmActive()
     return v4.oldfarmEnabled or v4.autofarmEnabled
@@ -2819,7 +2819,7 @@ local function clickOnce()
     vim:SendMouseButtonEvent(position.X, position.Y, 0, false, game, 0)
     return true
 end
--- OP: attempt M1, wait 0.4s, send skill 1, wait 0.4s.
+-- OP: M1, pause, press alternating skill keys 1/2, then resume M1.
 -- A blocked/failed mouse input must never disable keyboard skill input.
 local function farmInputAllowed()
     local character = localPlayer.Character
@@ -2828,6 +2828,7 @@ local function farmInputAllowed()
         and humanoid and humanoid.Health > 0
         and not v4.UIP:GetFocusedTextBox() and not refillBlocksCombat()
 end
+local nextSkillKey = Enum.KeyCode.One
 task.spawn(function()
     while v3["1"].Parent do
         local started = os.clock()
@@ -2848,15 +2849,17 @@ task.spawn(function()
             if opCycle and not v4.skillInputFailed then
                 task.wait(0.4)
                 if generation == (v4.inputGeneration or 0) and v4.autofarmEnabled and farmInputAllowed() then
+                    local skillKey = nextSkillKey
+                    nextSkillKey = skillKey == Enum.KeyCode.One and Enum.KeyCode.Two or Enum.KeyCode.One
                     local skillOK, err = pcall(function()
-                        v4.VIM:SendKeyEvent(true, Enum.KeyCode.One, false, game)
+                        v4.VIM:SendKeyEvent(true, skillKey, false, game)
                         task.wait(0.08)
-                        v4.VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game)
+                        v4.VIM:SendKeyEvent(false, skillKey, false, game)
                     end)
                     if not skillOK then
-                        pcall(function() v4.VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game) end)
+                        pcall(function() v4.VIM:SendKeyEvent(false, skillKey, false, game) end)
                         v4.skillInputFailed = true
-                        v2("Skill 1 input unavailable", tostring(err) .. ". Toggle OP off/on to retry.", 8)
+                        v2("Skill input unavailable", tostring(err) .. ". Toggle OP off/on to retry.", 8)
                     end
                     sentSkill = true
                 end
