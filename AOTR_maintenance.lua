@@ -1216,13 +1216,13 @@ v3["104"] = Instance.new("UIStroke", v3["101"]);
 v3["104"].Thickness = 2;
 v3["104"].Color = Color3.fromRGB(255, 255, 255);
 -- Build Auto Skill with the other mission controls, before dependency waits.
-v3.autoSkillEnabled = false
+v3.autoSkillEnabled = true
 v3.autoSkillFrame = v3["48"]:Clone()
 v3.autoSkillFrame.Name = "autoSkill"
 v3.autoSkillFrame.Parent = v3["4"]
 v3.autoSkillFrame:FindFirstChild("autoLabel").Text = "Auto Skill"
 v3.autoSkillButton = v3.autoSkillFrame:FindFirstChild("autoLabel"):FindFirstChild("autoToggle")
-v3.autoSkillButton.BackgroundColor3 = Color3.fromRGB(171, 0, 0)
+v3.autoSkillButton.BackgroundColor3 = Color3.new(0, 1, 0)
 v3.autoSkillButton.Activated:Connect(function()
     v3.autoSkillEnabled = not v3.autoSkillEnabled
     v3.autoSkillButton.BackgroundColor3 = v3.autoSkillEnabled and Color3.new(0, 1, 0) or Color3.fromRGB(171, 0, 0)
@@ -2943,7 +2943,7 @@ local function nextSkill()
                 found = found + 1
                 local last = skillLastAttempt[slot] or -math.huge
                 if skillReady(slot) and os.clock() - last >= 2
-                    and (not selected or last < oldest or (last == oldest and number < selectedNumber)) then
+                    and (not selected or last < oldest or (last == oldest and number > selectedNumber)) then
                     selected, selectedNumber, oldest = slot, number, last
                 end
             end
