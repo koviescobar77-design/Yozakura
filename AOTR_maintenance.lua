@@ -1828,6 +1828,24 @@ v4.UIP.InputEnded:Connect(function(v36) --[[ Line: 67 ]] --[[ Name: 25ms ]]
 end);
 local function v46() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref)
+    -- Keep a living regular Titan selected; let boss markers be re-evaluated.
+    local locked = v4.attackTarget or v4.nape
+    if v4.autofarmEnabled and locked and locked:IsA("BasePart") and v4.titans
+        and locked:IsDescendantOf(v4.titans) then
+        local model = locked.Parent
+        while model and model ~= v4.titans do
+            local humanoid = model:IsA("Model") and model:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                if humanoid.Health > 0 and model.Name ~= "Attack_Titan"
+                    and findPath(model, {"Hitboxes", "Hit", "Nape"}) == locked then
+                    v4.nape = locked
+                    return
+                end
+                break
+            end
+            model = model.Parent
+        end
+    end
     v4.nape = nil
     if v4.autofarmEnabled then
         local character = localPlayer.Character
@@ -2876,16 +2894,44 @@ local function reportSkillStatus(message)
         v2("Auto Skill", message, 6)
     end
 end
+local skillSlotCache = {}
+local skillCacheDirty = true
+local cachedPlayerGui
+local skillAddedConnection, skillRemovedConnection
+local function invalidateSkillCache(object)
+    local name = object.Name:lower()
+    if name:find("skill", 1, true) or name == "icon" or name == "cooldown" then
+        skillCacheDirty = true
+    end
+end
 local function nextSkill()
     local pg = localPlayer:FindFirstChildOfClass("PlayerGui")
     if not pg then return nil end
+    if pg ~= cachedPlayerGui then
+        if skillAddedConnection then skillAddedConnection:Disconnect() end
+        if skillRemovedConnection then skillRemovedConnection:Disconnect() end
+        cachedPlayerGui = pg
+        skillAddedConnection = pg.DescendantAdded:Connect(invalidateSkillCache)
+        skillRemovedConnection = pg.DescendantRemoving:Connect(invalidateSkillCache)
+        skillCacheDirty = true
+    end
+    if skillCacheDirty then
+        skillSlotCache = {}
+        for _, object in ipairs(pg:GetDescendants()) do
+            if object:IsA("GuiObject") and object.Name:lower():find("skill", 1, true)
+                and not object:IsDescendantOf(v3["1"]) then
+                table.insert(skillSlotCache, object)
+            end
+        end
+        skillCacheDirty = false
+    end
     local selected, selectedNumber, oldest
     local found = 0
     -- Discover slots from the live HUD; do not depend on the old Top.Hotbar path.
-    for _, slot in ipairs(pg:GetDescendants()) do
+    for _, slot in ipairs(skillSlotCache) do
         local name = slot.Name:lower()
         local number = name:find("skill", 1, true) and tonumber(name:match("(%d+)$"))
-        if (number == 1 or number == 2) and slot:IsA("GuiObject") and not slot:IsDescendantOf(v3["1"]) then
+        if (number == 1 or number == 2) and slot:IsDescendantOf(pg) then
             local cooldown = slot:FindFirstChild("Cooldown", true)
             local icon = slot:FindFirstChild("Icon", true)
             if cooldown and icon then
@@ -2913,7 +2959,7 @@ local function clickSkill(slot)
         local deadline = os.clock() + 2
         while v4.attackCallInFlight and os.clock() < deadline do task.wait(0.05) end
         if v4.attackCallInFlight then return end
-        task.wait(0.4)
+        task.wait(0.15)
         if not v4.autoSkillEnabled or generation ~= skillToggleGeneration or not inputAllowed() or not skillReady(slot) then return end
         skillLastAttempt[slot] = os.clock()
         for attempt = 1, 3 do
@@ -2946,7 +2992,7 @@ local function clickSkill(slot)
             v4.VIM:SendKeyEvent(false, heldKey, false, game)
             heldKey = nil
         end
-        task.wait(0.4)
+        task.wait(0.15)
         local cooldown = slot:FindFirstChild("Cooldown", true)
         if cooldown and cooldown.Visible then
             reportSkillStatus("Skill " .. (slot.Name:match("(%d+)$") or "?") .. ": cooldown detected.")
@@ -2968,7 +3014,7 @@ task.spawn(function()
             local ok, slot = pcall(nextSkill)
             if ok and slot then clickSkill(slot)
             elseif not ok then reportSkillStatus("HUD lookup error: " .. tostring(slot)) end
-            nextSkillAt = os.clock() + 0.8
+            nextSkillAt = os.clock() + (ok and slot and 0.4 or 0.1)
         end
         v4.autoAttack = inputAllowed() and farmActive() and not v4.centerClickFailed and not v4.skillCasting
         if v4.autoAttack and os.clock() >= nextClickAt then
@@ -2982,6 +3028,8 @@ task.spawn(function()
         end
         task.wait(0.05)
     end
+    if skillAddedConnection then skillAddedConnection:Disconnect() end
+    if skillRemovedConnection then skillRemovedConnection:Disconnect() end
     v4.skillCasting = false
     v4.autoAttack = false
 end)
