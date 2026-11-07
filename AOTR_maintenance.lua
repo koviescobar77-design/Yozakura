@@ -2595,9 +2595,11 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     v4.farmCollisions = v4.farmCollisions or {}
     local existingVelocity = v4.root:FindFirstChild("BV")
     if existingVelocity and existingVelocity:IsA("BodyVelocity") then v4.savedFarmForce = existingVelocity.MaxForce end
-    v122.MaxForce = Vector3.new(0, 1000, 0);
-    v122.D = 1000;
-    v122.P = 1000;
+    -- BodyPosition owns height; BodyVelocity owns horizontal travel only.
+    local mass = math.max(v4.root.AssemblyMass, 1)
+    v122.MaxForce = Vector3.new(0, mass * workspace.Gravity * 4, 0);
+    v122.D = mass * 20;
+    v122.P = mass * 100;
     while farmActive() and task.wait(0.05) do
         if not farmActive() then break end
         if not refillBlocksCombat() then
@@ -2613,19 +2615,26 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         if v4.nape ~= nil then
             local l_BV_0 = v4.root:FindFirstChild("BV");
             if l_BV_0 then
-                l_BV_0.MaxForce = Vector3.one * (v4.autofarmEnabled and 9000 or 5500);
+                l_BV_0.MaxForce = Vector3.new(1, 0, 1) * (v4.autofarmEnabled and 9000 or 5500);
             end;
             local l_BG_0 = v4.root:FindFirstChild("BG");
             local v126 = v4.nape.Position + Vector3.new(0, v123, 0) + titanRearOffset(v4.nape);
-            local delta = v126 - v4.root.Position
-            local l_Unit_0 = delta.Magnitude > 0.01 and delta.Unit or v4.root.CFrame.LookVector;
-            local l_Magnitude_2 = (v126 - v4.root.Position).Magnitude;
+            -- Preserve the configured target height, including small-Titan/boss rules.
+            if v4.root.Position.Y > v126.Y + 3 then
+                v4.root.CFrame = v4.root.CFrame + Vector3.new(0, v126.Y - v4.root.Position.Y, 0)
+                local velocity = v4.root.AssemblyLinearVelocity
+                v4.root.AssemblyLinearVelocity = Vector3.new(velocity.X, 0, velocity.Z)
+            end
+            local offset = v126 - v4.root.Position
+            local delta = Vector3.new(offset.X, 0, offset.Z)
+            local l_Unit_0 = delta.Magnitude > 0.01 and delta.Unit or Vector3.zero;
+            local l_Magnitude_2 = delta.Magnitude;
             local speedGain = v4.autofarmEnabled and 8 or 5
             local speedLimit = v4.autofarmEnabled and 1000 or 500
             local v129 = math.min(l_Magnitude_2 * speedGain, speedLimit);
             if v4.autofarmEnabled and l_Magnitude_2 < 3 then v129 = 0 end
             if l_BV_0 then
-                l_BV_0.MaxForce = Vector3.one * (v4.autofarmEnabled and 9000 or 5500);
+                l_BV_0.MaxForce = Vector3.new(1, 0, 1) * (v4.autofarmEnabled and 9000 or 5500);
                 l_BV_0.Velocity = l_Unit_0 * v129;
             end;
             v122.Position = Vector3.new(v122.Position.X, v126.Y, v122.Position.Z);
