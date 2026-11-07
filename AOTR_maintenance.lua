@@ -2323,6 +2323,93 @@ v3["2b"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         v3["2b"].BackgroundColor3 = Color3.new(1, 0, 0);
     end;
 end);
+-- Thrill: the user equips this in hotbar slot 1 (keyboard shortcut One).
+-- Only sends input while farming; HUD cooldown confirmation controls repeats.
+do
+    local wasFarming, awaitingCooldown, cooldownSeen, inputBlocked = false, false, false, false
+    local sentAt = 0
+    local warnedMissing = false
+    local function slotOneCooldown()
+        local hotbar = findPath(localPlayer, {"PlayerGui", "Interface", "HUD", "Main", "Top", "Hotbar"})
+        if not hotbar then return nil end
+        local slot
+        for _, child in ipairs(hotbar:GetChildren()) do
+            if child.Name:lower():match("^skill[%s_]*1$") then
+                if slot then return nil end
+                slot = child
+            end
+        end
+        if not slot then return nil end
+        local icon = findPath(slot, {"Inner", "Icon"})
+        local cooldown = slot:FindFirstChild("Cooldown")
+        if not icon or not (icon:IsA("ImageLabel") or icon:IsA("ImageButton"))
+            or icon.Image == "" or icon.Image == "rbxassetid://0"
+            or not cooldown or not cooldown:IsA("GuiObject") then return nil end
+        local ancestor = slot
+        while ancestor and ancestor ~= localPlayer do
+            if ancestor:IsA("GuiObject") and not ancestor.Visible then return nil end
+            if ancestor:IsA("ScreenGui") and not ancestor.Enabled then return nil end
+            ancestor = ancestor.Parent
+        end
+        return cooldown
+    end
+    task.spawn(function()
+        while v3["1"].Parent do
+            task.wait(0.1)
+            local farming = v4.oldfarmEnabled or v4.autofarmEnabled
+            if not farming then
+                wasFarming, awaitingCooldown, cooldownSeen, inputBlocked = false, false, false, false
+                warnedMissing = false
+            else
+                if not wasFarming then
+                    wasFarming = true
+                    print("[Yozakura] Slot 1 / Thrill automation enabled.")
+                end
+                local cooldown = slotOneCooldown()
+                if not cooldown then
+                    if not warnedMissing then
+                        warnedMissing = true
+                        v2("Slot 1 paused", "Equipped skill or cooldown HUD could not be identified.", 6)
+                    end
+                else
+                    warnedMissing = false
+                    if cooldown.Visible then
+                        cooldownSeen = true
+                        awaitingCooldown = false
+                    elseif cooldownSeen then
+                        cooldownSeen = false
+                    end
+                    if awaitingCooldown and os.clock() - sentAt >= 5 then
+                        awaitingCooldown = false
+                        inputBlocked = true
+                        v2("Slot 1 unconfirmed", "Key 1 sent, but cooldown did not appear. Toggle autofarm off/on to retry.", 8)
+                    end
+                    local character = localPlayer.Character
+                    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+                    if not inputBlocked and not awaitingCooldown and not cooldown.Visible
+                        and humanoid and humanoid.Health > 0
+                        and not refillBlocksCombat() and not missionResults()
+                        and not v4.UIP:GetFocusedTextBox() then
+                        awaitingCooldown = true
+                        sentAt = os.clock()
+                        local ok, err = pcall(function()
+                            v4.VIM:SendKeyEvent(true, Enum.KeyCode.One, false, game)
+                            task.wait(0.05)
+                            v4.VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game)
+                        end)
+                        if not ok then
+                            pcall(function() v4.VIM:SendKeyEvent(false, Enum.KeyCode.One, false, game) end)
+                            inputBlocked = true
+                            awaitingCooldown = false
+                            v2("Slot 1 input failed", tostring(err), 8)
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
+
 local function v108() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v2 (ref), v4 (ref)
     if not v4.autofarmEnabled or refillBlocksCombat() then return end
