@@ -1360,6 +1360,8 @@ local function stopAutoFarm(message)
     v4.autoAttack = false
     v4.nape = nil
     v4.attackTarget = nil
+    v4.steadyFacingTarget = nil
+    v4.steadyFacing = nil
     v4.noTitanSince = nil
     v4.farmDeadline = nil
     v3["4a"].BackgroundColor3 = Color3.new(1, 0, 0)
@@ -2026,7 +2028,18 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
             end;
             v122.Position = Vector3.new(v122.Position.X, v126.Y, v122.Position.Z);
             if l_BG_0 then
-                l_BG_0.CFrame = CFrame.new(v4.root.Position, v4.root.Position + l_Unit_0);
+                -- Hold a level facing direction for this target; do not face the flight velocity.
+                if v4.steadyFacingTarget ~= v4.nape or not v4.steadyFacing then
+                    local toward = v4.nape.Position - v4.root.Position
+                    local flat = Vector3.new(toward.X, 0, toward.Z)
+                    if flat.Magnitude < 0.01 then
+                        local look = v4.root.CFrame.LookVector
+                        flat = Vector3.new(look.X, 0, look.Z)
+                    end
+                    v4.steadyFacing = flat.Magnitude > 0.01 and flat.Unit or Vector3.new(0, 0, -1)
+                    v4.steadyFacingTarget = v4.nape
+                end
+                l_BG_0.CFrame = CFrame.lookAt(v4.root.Position, v4.root.Position + v4.steadyFacing)
             end;
             for _, v133 in pairs(v4.character:GetDescendants()) do
                 if v133:IsA("BasePart") and v133.CanCollide == true then
@@ -2064,9 +2077,7 @@ end
 
 -- Local scheduling and validation only; these are not server damage/crit stats.
 local CombatConfig = {
-    AttackInterval = 0.08,
-    M1Interval = 0.1,
-    ApproachRange = 250,
+    AttackInterval = 0.1,
     AttemptsPerBurst = 10,
     RegularRange = 175,
     BossRange = 250,
@@ -2158,7 +2169,7 @@ end;
 v3["4a"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref), v134 (ref), v136 (ref), v3 (ref)
     v4.oldfarmEnabled = not v4.oldfarmEnabled;
-    v4.m1InputError = nil
+    v4.centerClickFailed = false
     v4.autoAttack = v4.oldfarmEnabled
     if v4.oldfarmEnabled then
         coroutine.wrap(v134)();
@@ -2168,39 +2179,38 @@ v3["4a"].Activated:Connect(function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         stopAutoFarm()
     end;
 end);
--- M1 is simulated only while approaching a valid live target.
-local function approachM1()
-    if not v4.oldfarmEnabled or v4.m1InputError or refillBlocksCombat() then return false end
-    local target = v4.attackTarget or v4.nape
-    if not CombatManager.CanAttack(target, CombatConfig.ApproachRange) then return false end
+local function clickOnce()
     local input = game:GetService("UserInputService")
     if input:GetFocusedTextBox() then return false end
     local camera = workspace.CurrentCamera
-    local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
-    if not camera or not playerGui then return false end
-    local center = camera.ViewportSize * 0.5
-    for _, object in ipairs(playerGui:GetGuiObjectsAtPosition(center.X, center.Y)) do
-        local node = object
-        while node and node ~= playerGui do
-            if node:IsA("GuiButton") or node:IsA("TextBox") then return false end
-            node = node.Parent
+    if not camera then return false end
+    local position = camera.ViewportSize * 0.5
+    local gui = localPlayer:FindFirstChildOfClass("PlayerGui")
+    if gui then
+        for _, object in ipairs(gui:GetGuiObjectsAtPosition(position.X, position.Y)) do
+            if object:IsA("GuiButton") or object:IsA("TextBox") then return false end
         end
     end
     local vim = game:GetService("VirtualInputManager")
-    vim:SendMouseButtonEvent(center.X, center.Y, 0, true, game, 0)
-    vim:SendMouseButtonEvent(center.X, center.Y, 0, false, game, 0)
+    vim:SendMouseButtonEvent(position.X, position.Y, 0, true, game, 0)
+    vim:SendMouseButtonEvent(position.X, position.Y, 0, false, game, 0)
     return true
 end
 task.spawn(function()
     while v3["1"].Parent do
         local started = os.clock()
-        local ok, err = pcall(approachM1)
-        if not ok then
-            v4.m1InputError = tostring(err)
-            v2("M1 input unavailable", "Toggle VIP Autofarm off/on to retry. " .. tostring(err), 8)
+        v4.autoAttack = v4.oldfarmEnabled and not v4.centerClickFailed
+        if v4.autoAttack and not refillBlocksCombat() then
+            local ok, clicked = pcall(clickOnce)
+            if not ok then
+                v4.centerClickFailed = true
+                v4.autoAttack = false
+                v2("Center input unavailable", tostring(clicked), 8)
+            end
         end
-        task.wait(math.max(0.01, CombatConfig.M1Interval - (os.clock() - started)))
+        task.wait(math.max(0.01, 0.1 - (os.clock() - started)))
     end
+    v4.autoAttack = false
 end)
 -- Event observation triggers at zero; polling reconnects if the HUD changes.
 v4.bladeEnabled = true
