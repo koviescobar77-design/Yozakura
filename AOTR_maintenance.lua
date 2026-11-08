@@ -2764,16 +2764,25 @@ local CombatConfig = {
     MaxSweepSeconds = 0.35,
     RegularRange = 175,
     BossRange = 250,
+    MultiHitRegularRange = 300,
+    MultiHitBossRange = 350,
 }
 local function attackInterval()
     return v4.autofarmEnabled and CombatConfig.OPAttackInterval or CombatConfig.AttackInterval
 end
 local CombatManager = {}
+function CombatManager.MultiHitActive()
+    return v4.autofarmEnabled and v4.multiHitEnabled
+end
 function CombatManager.CanAttack(target, maxDistance)
     if v4.skillCasting then return false end
     local character = localPlayer.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
     if not root or not root:IsA("BasePart") then return false end
+    if CombatManager.MultiHitActive() then
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if not humanoid or humanoid.Health <= 0 then return false end
+    end
     if not target or not target:IsA("BasePart") or not target.Parent then return false end
     if not v4.titans or not target:IsDescendantOf(v4.titans) then return false end
     local ancestor = target.Parent
@@ -2794,9 +2803,11 @@ function CombatManager.NearbyTargets(anchor)
     for _, titan in ipairs(v4.titans:GetChildren()) do
         if titan:IsA("Model") then
             local target = findPath(titan, {"Hitboxes", "Hit", "Nape"})
-            local range = CombatConfig.RegularRange
+            local range = CombatManager.MultiHitActive()
+                and CombatConfig.MultiHitRegularRange or CombatConfig.RegularRange
             if titan.Name == "Attack_Titan" then
-                range = CombatConfig.BossRange
+                range = CombatManager.MultiHitActive()
+                    and CombatConfig.MultiHitBossRange or CombatConfig.BossRange
                 local marker = titan:FindFirstChild("Marker")
                 local marked = marker
                     and (marker:IsA("BillboardGui") or marker:IsA("Highlight"))
@@ -2920,6 +2931,9 @@ do
             if not valid() then return end
             local candidates = CombatManager.NearbyTargets(anchor)
             if #candidates == 0 then return end
+            -- A dead or distant old anchor must not block a valid nearby target.
+            local primary = candidates[1].target
+            v4.nape, v4.attackTarget = primary, primary
             clicked = v4.performM1() == true
             if not clicked then
                 diagDetail = "M1 blocked; no target requests sent."
@@ -2991,6 +3005,15 @@ local function v136() -- One attack worker, independent of frame rate.
         diagShow("Finding target")
         v46();
         diagShow("Checking target distance")
+        if CombatManager.MultiHitActive() then
+            -- Select and validate using the Multi Hit radius, not the legacy gate.
+            local candidates = CombatManager.NearbyTargets(v4.nape)
+            if #candidates > 0 then
+                local primary = candidates[1]
+                hitBurst(primary.target, primary.range)
+            end
+            return
+        end
         local target = v4.nape
         local range = missionTitans:FindFirstChild("Attack_Titan")
             and CombatConfig.BossRange or CombatConfig.RegularRange
