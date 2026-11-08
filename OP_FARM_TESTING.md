@@ -20,6 +20,16 @@ If the experimental path errors or its replies time out, Multi Hit turns OFF aut
 
 The previous standalone five-target test overlays/buttons were removed; this control is integrated into the Mission panel.
 
+## Multi Hit range update
+
+With OP Farm and Multi Hit both ON, regular Titan candidates use a 300-stud radius (previously 175) and boss weak points use 350 studs (previously 250). Ordinary combat retains its original 175/250 checks.
+
+The outer combat worker now uses the Multi Hit radius instead of rejecting the entire group at the older primary-target gate. If the old anchor is dead, removed, or outside the selected radius, the nearest valid living candidate becomes the primary M1 target. Targets are checked again immediately before dispatch. Multi Hit does not send requests while the local player's Humanoid is dead.
+
+The limits above are local selection limits. They do not enlarge the server's accepted damage range or guarantee a hit. Payloads, movement, skill defaults, and ordinary combat are unchanged by this update.
+
+Passed mocked range checks: inclusive 300/350 boundaries, exclusion beyond those boundaries, unchanged ordinary ranges, worker fallback beyond the old 175-stud gate, moved/dead target rejection, and player-death rejection. Live damage at extended distances remains unverified.
+
 ## Verification and limits
 
 Passed locally: complete-script syntax compilation, restored-code comparisons, ordinary OFF behavior, opt-in OP dispatch, changing modes during an attack, fallback after errors, timeout draining without duplicate calls, and WIP isolation.
