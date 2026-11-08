@@ -1255,13 +1255,13 @@ multiTargetLabel.Text = "Max targets"
 v3.multiTargetBox = multiTargetLabel:FindFirstChild("multi")
 v3.multiTargetBox.Text = tostring(v3.multiHitTargets)
 v3.multiTargetBox.ClearTextOnFocus = false
-v3.multiTargetBox.PlaceholderText = "3–10"
+v3.multiTargetBox.PlaceholderText = "5–10"
 v3.multiTargetBox.FocusLost:Connect(function()
     local count = tonumber(v3.multiTargetBox.Text)
     if not count or count ~= count or count == math.huge or count == -math.huge then
         count = v3.multiHitTargets
     end
-    count = math.clamp(math.floor(count), 3, 10)
+    count = math.clamp(math.floor(count), 5, 10)
     v3.multiHitTargets = count
     v3.multiTargetBox.Text = tostring(count)
     if v3.onMultiHitTargetsChanged then v3.onMultiHitTargetsChanged(count) end
@@ -2833,7 +2833,7 @@ function CombatManager.TargetLimit()
     if count ~= count or count == math.huge or count == -math.huge then
         count = CombatConfig.MaxTargetsPerSweep
     end
-    return math.clamp(math.floor(count), 3, 10)
+    return math.clamp(math.floor(count), 5, 10)
 end
 
 function CombatManager.WeakPoint(titan)
@@ -3018,7 +3018,7 @@ do
                 and not v4.fiveTestActive and not v4.refillPending
                 and not refillBlocksCombat() and not v4.UIP:GetFocusedTextBox()
         end
-        local clicked, sent = false, 0
+        local clicked, sent, m1StartedAt = false, 0, nil
         v4.m1GroupInFlight = true
         v4.attackTarget = anchor
         local ok, err = pcall(function()
@@ -3033,6 +3033,7 @@ do
             local primary = candidates[1].target
             v4.nape, v4.attackTarget = primary, primary
             CombatManager.AimAtWeakPoint(primary)
+            m1StartedAt = os.clock()
             clicked = v4.performM1() == true
             if not clicked then
                 diagDetail = "M1 blocked; no target requests sent."
@@ -3042,7 +3043,8 @@ do
             local items = self:Dispatch(candidates, valid, os.clock())
             sent = #items
         end)
-        if clicked then self.nextM1 = os.clock() + attackInterval() end
+        -- Count the existing interval from input start, not from the last reply.
+        if clicked then self.nextM1 = m1StartedAt + attackInterval() end
         self.running = false
         v4.autoAttack = false
         v4.attackTarget = nil
