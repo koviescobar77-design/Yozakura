@@ -2695,24 +2695,49 @@ local function diagHit(...)
 end
 
 -- Local scheduling and validation only; these are not server damage/crit stats.
+-- Request pacing only. The server decides which hits count.
 local CombatConfig = {
-    AttackInterval = 0.4,
-    OPAttackInterval = 0.4,
-    AttemptsPerBurst = 10,
+    AttackInterval = 0.20,
+    OPAttackInterval = 0.15,
+    AttemptsPerBurst = 6,
+    MaxBurstSeconds = 1.5,
     RegularRange = 175,
     BossRange = 250,
 }
+
 local function attackInterval()
-    return v4.autofarmEnabled and CombatConfig.OPAttackInterval or CombatConfig.AttackInterval
+    local interval = v4.autofarmEnabled
+        and CombatConfig.OPAttackInterval
+        or CombatConfig.AttackInterval
+    return math.max(0.10, interval)
 end
+
 local CombatManager = {}
+
 function CombatManager.CanAttack(target, maxDistance)
-    if v4.skillCasting then return false end
+    if v4.skillCasting or refillBlocksCombat() then
+        return false
+    end
+
     local character = localPlayer.Character
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-    if not root or not root:IsA("BasePart") then return false end
-    if not target or not target:IsA("BasePart") or not target.Parent then return false end
-    if not v4.titans or not target:IsDescendantOf(v4.titans) then return false end
+    local root = character
+        and character:FindFirstChild("HumanoidRootPart")
+    local ownHumanoid = character
+        and character:FindFirstChildOfClass("Humanoid")
+
+    if not root or not root:IsA("BasePart") then
+        return false
+    end
+    if not ownHumanoid or ownHumanoid.Health <= 0 then
+        return false
+    end
+    if not target or not target:IsA("BasePart") or not target.Parent then
+        return false
+    end
+    if not v4.titans or not target:IsDescendantOf(v4.titans) then
+        return false
+    end
+
     local ancestor = target.Parent
     local humanoid
     while ancestor and ancestor ~= v4.titans do
@@ -2720,28 +2745,78 @@ function CombatManager.CanAttack(target, maxDistance)
         if humanoid then break end
         ancestor = ancestor.Parent
     end
-    if not humanoid or humanoid.Health <= 0 then return false end
-    if (root.Position - target.Position).Magnitude > maxDistance then return false end
+
+    if not humanoid or humanoid.Health <= 0 then
+        return false
+    end
+    if (root.Position - target.Position).Magnitude > maxDistance then
+        return false
+    end
+
     v4.root = root
     return true
 end
+
 local nextHitAt = 0
+local burstRunning = false
+
 local function hitBurst(target, maxDistance)
+    if burstRunning then return end
+
+    burstRunning = true
     v4.attackTarget = target
+
+    local character = localPlayer.Character
+    local startedAt = os.clock()
     local sent = 0
-    for hit = 1, CombatConfig.AttemptsPerBurst do
-        local delay = nextHitAt - os.clock()
-        if delay > 0 then task.wait(delay) end
-        if not farmActive() or refillBlocksCombat() then break end
-        if not CombatManager.CanAttack(target, maxDistance) then break end
-        nextHitAt = os.clock() + attackInterval()
-        diagHit("Hitboxes", "Register", target, math.random(215, 230), math.random(10, 100))
-        sent = sent + 1
+
+    local function canContinue()
+        return localPlayer.Character == character
+            and farmActive()
+            and not refillBlocksCombat()
+            and not v4.skillCasting
+            and os.clock() - startedAt < CombatConfig.MaxBurstSeconds
+            and CombatManager.CanAttack(target, maxDistance)
     end
+
+    local ok, err = pcall(function()
+        for _ = 1, CombatConfig.AttemptsPerBurst do
+            while os.clock() < nextHitAt do
+                if not canContinue() then return end
+                task.wait(math.max(0, math.min(0.03, nextHitAt - os.clock())))
+            end
+
+            if not canContinue() then return end
+
+            -- Preserve the existing registration arguments.
+            -- A returned call does not prove damage was accepted.
+            diagHit(
+                "Hitboxes",
+                "Register",
+                target,
+                math.random(215, 230),
+                math.random(10, 100)
+            )
+            sent = sent + 1
+
+            -- Space requests after the response; never queue catch-up hits.
+            nextHitAt = os.clock() + attackInterval()
+        end
+    end)
+
+    burstRunning = false
     v4.attackTarget = nil
-    diagDetail = "Burst attempts sent: " .. sent .. "/" .. CombatConfig.AttemptsPerBurst
-        .. " (accepted hits are unverified)"
-    diagShow(refillBlocksCombat() and "Paused for refill" or "Burst finished")
+
+    diagDetail = string.format(
+        "Burst requests: %d/%d; accepted hits unverified",
+        sent,
+        CombatConfig.AttemptsPerBurst
+    )
+    diagShow(ok and "Burst finished" or "Burst failed")
+
+    if not ok then
+        error(err, 0)
+    end
 end
 local function v136() -- One attack worker, independent of frame rate.
     if v4.combatWorkerRunning then return end
