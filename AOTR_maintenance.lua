@@ -2300,6 +2300,7 @@ v4.buttonsFolder.ChildAdded:Connect(function(v75) --[[ Line: 67 ]] --[[ Name: 25
     -- upvalues: v4 (ref), v46 (ref)
     if v4.escapeEnabled then
         task.wait(0.15);
+        if v4.fiveTestActive then return end
         v4.remotePost:FireServer("Attacks", "Slash_Escape");
         v75:Destroy();
         task.wait(0.3);
@@ -2642,7 +2643,10 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     v122.P = 1000;
     while farmActive() and task.wait(0.05) do
         if not farmActive() then break end
-        if not refillBlocksCombat() then
+        if v4.fiveTestActive then
+            local velocity = v4.root:FindFirstChild("BV")
+            if velocity and velocity:IsA("BodyVelocity") then velocity.Velocity = Vector3.zero end
+        elseif not refillBlocksCombat() then
         if v4.autofarmEnabled and not livingFarmTarget(v4.attackTarget) then v4.attackTarget = nil end
         if not v4.attackTarget or not v4.attackTarget.Parent then v46() end
         if v4.attackTarget and v4.attackTarget.Parent then v4.nape = v4.attackTarget end
@@ -2717,7 +2721,7 @@ combatStatus.TextXAlignment = Enum.TextXAlignment.Left
 combatStatus.Parent = v3["1"]
 local function diagShow(stage)
     if not combatStatus.Parent then return end
-    combatStatus.Text = "M1 / 3-target test\n" .. tostring(stage)
+    combatStatus.Text = "M1 / 5-target trial\n" .. tostring(stage)
         .. "\nM1: " .. (v4.m1Count or 0) .. " | Requests: " .. diagCount .. " | Returned: " .. diagReturned
         .. "\n" .. diagDetail
 end
@@ -2746,7 +2750,7 @@ diagShow("Ready; enable an autofarm mode")
 local CombatConfig = {
     AttackInterval = 0.40,
     OPAttackInterval = 0.40,
-    MaxTargetsPerSweep = 3,
+    MaxTargetsPerSweep = 5,
     MaxSweepSeconds = 0.35,
     RegularRange = 175,
     BossRange = 250,
@@ -2817,10 +2821,30 @@ function CombatManager.NearbyTargets(anchor)
     return candidates
 end
 
+function CombatManager.TargetHumanoid(target)
+    local ancestor = target and target.Parent
+    while ancestor and ancestor ~= v4.titans do
+        local humanoid = ancestor:FindFirstChildOfClass("Humanoid")
+        if humanoid then return humanoid, ancestor end
+        ancestor = ancestor.Parent
+    end
+end
+
+function CombatManager.RegisterTarget(target)
+    local character = localPlayer.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    assert(root and root:IsA("BasePart"), "Character root unavailable")
+    local mover = root:FindFirstChild("BV")
+    -- Match the registration arguments used by the original slash/escape path.
+    local speed = mover and mover:IsA("BodyVelocity")
+        and mover.Velocity.Magnitude or root.AssemblyLinearVelocity.Magnitude
+    return diagHit("Hitboxes", "Register", target, speed, 0)
+end
+
 local nextHitAt = 0
 local sweepRunning = false
 local function hitBurst(anchor, maxDistance)
-    if sweepRunning or type(v4.performM1) ~= "function" or v4.centerClickFailed then return end
+    if sweepRunning or v4.fiveTestActive or type(v4.performM1) ~= "function" or v4.centerClickFailed then return end
     sweepRunning = true
     v4.m1GroupInFlight = true
     v4.attackTarget = anchor
@@ -2834,6 +2858,7 @@ local function hitBurst(anchor, maxDistance)
             and farmActive()
             and not refillBlocksCombat()
             and not v4.skillCasting
+            and not v4.fiveTestActive
             and not v4.refillPending
             and not v4.UIP:GetFocusedTextBox()
             and (not swingStartedAt or os.clock() - swingStartedAt < CombatConfig.MaxSweepSeconds)
@@ -2847,7 +2872,7 @@ local function hitBurst(anchor, maxDistance)
         local candidates = CombatManager.NearbyTargets(anchor)
         available = #candidates
         if available == 0 then return end
-        -- Exactly one M1 input for this group of at most three targets.
+        -- Exactly one M1 input for this group of at most five targets.
         clicked = v4.performM1() == true
         if not clicked then
             diagDetail = "M1 input blocked; no target requests sent."
@@ -2860,8 +2885,7 @@ local function hitBurst(anchor, maxDistance)
             if not canContinue() then break end
             if CombatManager.CanAttack(candidate.target, candidate.range) then
                 -- No per-target click or deliberate delay within this M1 group.
-                diagHit("Hitboxes", "Register", candidate.target,
-                    math.random(215, 230), math.random(10, 100))
+                CombatManager.RegisterTarget(candidate.target)
                 sent = sent + 1
             end
         end
@@ -2878,11 +2902,143 @@ local function hitBurst(anchor, maxDistance)
     diagShow(ok and "M1 group finished" or "M1 group failed")
     if not ok then error(err, 0) end
 end
+-- Controlled trial: observe five targets after exactly one script-generated M1.
+function CombatManager.TestFiveTargets()
+    local observers = {}
+    local ownsGroup = false
+    local ok, err = xpcall(function()
+        v4.fiveTestReport("Waiting for the current attack / skill to finish...")
+        local deadline = os.clock() + 3
+        while (v4.m1GroupInFlight or v4.attackCallInFlight or v4.skillCasting)
+            and os.clock() < deadline do task.wait(0.03) end
+        assert(not v4.m1GroupInFlight and not v4.attackCallInFlight and not v4.skillCasting,
+            "Previous action is still running; no test M1 sent.")
+        assert(type(v4.performM1) == "function", "M1 helper is not ready yet.")
+        local character = localPlayer.Character
+        local generation = v4.inputGeneration
+        local function valid()
+            return v3["1"].Parent and localPlayer.Character == character
+                and generation == v4.inputGeneration and not missionResults()
+                and not v4.refilling and not v4.refillPending
+                and not v4.UIP:GetFocusedTextBox()
+        end
+        assert(valid() and not refillBlocksCombat(), "Refill, results, or text input is blocking the test.")
+        -- Allow the last automatic attack's health replication to settle.
+        task.wait(0.6)
+        assert(valid(), "Test interrupted before M1.")
+        local candidates = CombatManager.NearbyTargets(nil)
+        assert(#candidates == 5, "Found " .. #candidates
+            .. "/5 living targets in range. Move closer to a group of five, then retry.")
+        for i, candidate in ipairs(candidates) do
+            local humanoid, model = CombatManager.TargetHumanoid(candidate.target)
+            assert(humanoid and humanoid.Health > 0, "A target is no longer alive; retry.")
+            candidate.humanoid = humanoid
+            candidate.name = model.Name
+            candidate.before = humanoid.Health
+            candidate.minimum = humanoid.Health
+            candidate.requested = false
+            -- Disappearance alone is never counted as damage.
+            observers[#observers + 1] = humanoid.HealthChanged:Connect(function(health)
+                if type(health) == "number" then
+                    candidate.minimum = math.min(candidate.minimum, health)
+                end
+            end)
+        end
+        for _, candidate in ipairs(candidates) do
+            assert(CombatManager.CanAttack(candidate.target, candidate.range),
+                "A target left range before M1; retry.")
+        end
+        ownsGroup = true
+        v4.m1GroupInFlight = true
+        assert(v4.performM1() == true, "M1 input was blocked; no registration requests sent.")
+        v4.m1Count = (v4.m1Count or 0) + 1
+        local startedAt = os.clock()
+        local requested = 0
+        v4.fiveTestReport("One M1 sent. Sending up to five target requests; observing health...")
+        for _, candidate in ipairs(candidates) do
+            if not valid() or os.clock() - startedAt >= CombatConfig.MaxSweepSeconds then break end
+            if CombatManager.CanAttack(candidate.target, candidate.range) then
+                candidate.reply = tostring(CombatManager.RegisterTarget(candidate.target)):sub(1, 28)
+                candidate.requested = true
+                requested = requested + 1
+            end
+        end
+        -- No automatic attacks or skills run during this observation window.
+        local observeUntil = os.clock() + 1.2
+        while os.clock() < observeUntil do
+            assert(valid(), "Test interrupted; health result is incomplete.")
+            task.wait(0.05)
+        end
+        local changed, unknown = 0, 0
+        local lines = {}
+        for i, candidate in ipairs(candidates) do
+            local readOK, health = pcall(function() return candidate.humanoid.Health end)
+            if readOK then candidate.minimum = math.min(candidate.minimum, health) end
+            local drop = math.max(0, candidate.before - candidate.minimum)
+            if drop > 0 then changed = changed + 1 end
+            local removed = not candidate.humanoid.Parent
+            if removed and drop == 0 then unknown = unknown + 1 end
+            local observation = removed and drop == 0 and "removed; HP unknown"
+                or string.format("HP %.0f -> %.0f", candidate.before, candidate.minimum)
+            lines[#lines + 1] = string.format("%d. %.0f studs | %s | %s",
+                i, candidate.distance, observation,
+                candidate.requested and ("reply " .. candidate.reply) or "not requested")
+        end
+        v4.fiveTestReport(string.format(
+            "ONE M1 | requests %d/5 | HP drops %d/5\n%s\n"
+            .. "HP drops are observations; other players can affect them.%s",
+            requested, changed, table.concat(lines, "\n"),
+            unknown > 0 and (" Unknown removals: " .. unknown) or ""))
+        print("[Yozakura five-target trial] requests=" .. requested .. "/5, observed HP drops=" .. changed .. "/5")
+    end, function(message) return tostring(message) end)
+    for _, observer in ipairs(observers) do observer:Disconnect() end
+    if ownsGroup then v4.m1GroupInFlight = false end
+    v4.fiveTestActive = false
+    if not ok then v4.fiveTestReport("Test incomplete: " .. tostring(err)) end
+end
+
+do
+    local button = Instance.new("TextButton")
+    button.Name = "TestFiveTargets"
+    button.Size = UDim2.fromOffset(310, 32)
+    button.Position = UDim2.new(0, 12, 0, 178)
+    button.BackgroundColor3 = Color3.fromRGB(40, 80, 110)
+    button.TextColor3 = Color3.new(1, 1, 1)
+    button.TextSize = 16
+    button.Font = Enum.Font.SourceSansBold
+    button.Text = "Test 1 M1 / 5 Titans"
+    button.Parent = v3["1"]
+    local report = Instance.new("TextLabel")
+    report.Name = "FiveTargetHealthReport"
+    report.Size = UDim2.fromOffset(380, 180)
+    report.Position = UDim2.new(0, 12, 0, 216)
+    report.BackgroundColor3 = Color3.fromRGB(20, 25, 32)
+    report.BackgroundTransparency = 0.15
+    report.TextColor3 = Color3.new(1, 1, 1)
+    report.TextSize = 13
+    report.Font = Enum.Font.Code
+    report.TextWrapped = true
+    report.TextXAlignment = Enum.TextXAlignment.Left
+    report.TextYAlignment = Enum.TextYAlignment.Top
+    report.Text = "Ready for a controlled test. Approach five living Titans, then press the button.\n"
+        .. "Automatic attacks and skills pause during the test. Avoid manual attacks while measuring."
+    report.Parent = v3["1"]
+    v4.fiveTestReport = function(message)
+        if report.Parent then report.Text = tostring(message) end
+    end
+    button.Activated:Connect(function()
+        if v4.fiveTestActive then return end
+        v4.fiveTestActive = true
+        task.spawn(CombatManager.TestFiveTargets)
+    end)
+end
+
 local function v136() -- One attack worker, independent of frame rate.
     if v4.combatWorkerRunning then return end
     v4.combatWorkerRunning = true
     -- upvalues: v4 (ref), v46 (ref)
     local function iteration()
+        if v4.fiveTestActive then return end
         if refillBlocksCombat() then
             diagDetail = "Refill/results pause. Zero spare sets alone does not stop combat."
             diagShow("Paused for refill")
@@ -2988,8 +3144,18 @@ local function clickOnce()
         end
     end
     local vim = game:GetService("VirtualInputManager")
-    vim:SendMouseButtonEvent(position.X, position.Y, 0, true, game, 0)
-    vim:SendMouseButtonEvent(position.X, position.Y, 0, false, game, 0)
+    local held = false
+    local ok, err = pcall(function()
+        held = true
+        vim:SendMouseButtonEvent(position.X, position.Y, 0, true, game, 0)
+        task.wait(0.05)
+        vim:SendMouseButtonEvent(position.X, position.Y, 0, false, game, 0)
+        held = false
+    end)
+    if held then
+        pcall(function() vim:SendMouseButtonEvent(position.X, position.Y, 0, false, game, 0) end)
+    end
+    if not ok then error(err, 0) end
     return true
 end
 v4.performM1 = clickOnce
@@ -3004,7 +3170,7 @@ local function inputAllowed()
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     return v3["1"].Parent and humanoid and humanoid.Health > 0
         and not v4.UIP:GetFocusedTextBox() and not v4.refilling
-        and not v4.refillPending and not missionResults()
+        and not v4.refillPending and not v4.fiveTestActive and not missionResults()
 end
 local function refreshAutoSkill()
     autoSkillButton.BackgroundColor3 = v4.autoSkillEnabled and Color3.new(0, 1, 0) or Color3.fromRGB(171, 0, 0)
