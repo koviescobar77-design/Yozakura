@@ -1458,38 +1458,46 @@ local function equippedBladeVisible()
     return nil
 end
 local function needsStationRefill()
-    return readBladeCount(findBladeSets()) == 0 and equippedBladeVisible() == false
+    return v4.refillPending == true
+        or (readBladeCount(findBladeSets()) == 0 and equippedBladeVisible() == false)
 end
 local function requestRefill(manual)
     if v4.refilling then return end
     if not manual and os.clock() - lastRefillAttempt < 5 then return end
     lastRefillAttempt = os.clock()
     v4.refilling = true
+    v4.refillPending = true
     task.spawn(function()
         local suspended = {}
-        local root
-        local returnCFrame
-        local selectedStation
-        local farmingBeforeRefill = v4.oldfarmEnabled or v4.autofarmEnabled
+        local root, selectedStation
         local ok, err = xpcall(function()
-            setRefillStatus("Looking for a refill station...")
+            -- Let an existing registration finish before moving to the station.
+            local callDeadline = os.clock() + 3
+            while (v4.attackCallInFlight or v4.m1GroupInFlight) and os.clock() < callDeadline do
+                task.wait(0.03)
+            end
+            if v4.attackCallInFlight or v4.m1GroupInFlight then
+                error("Waiting for the current attack to finish; combat remains paused.", 0)
+            end
             local station = resolveRefill()
             if not station and v4.savedRefillCFrame and v4.savedRefillPlaceId == game.PlaceId
                 and v4.savedRefillTitans == workspace:FindFirstChild("Titans") then
                 station = {savedCFrame = v4.savedRefillCFrame, method = "keyR"}
             end
-            if not station then
-                error("No available loaded refill candidate. Retrying automatically; failed stations are skipped for 30 seconds.", 0)
-            end
+            if not station then error("No loaded refill station; combat remains paused.", 0) end
             selectedStation = station
             local character = localPlayer.Character
             root = character and character:FindFirstChild("HumanoidRootPart")
             if not root or not root:IsA("BasePart") then error("Player root is missing.", 0) end
-            returnCFrame = root.CFrame
-            local before = readBladeCount(findBladeSets())
+            local returnCFrame = root.CFrame
+            local generation = v4.inputGeneration
+            local farming = v4.oldfarmEnabled or v4.autofarmEnabled
+            local function validCharacter()
+                return localPlayer.Character == character and root.Parent and v3["1"].Parent
+            end
             for _, mover in ipairs(root:GetChildren()) do
                 if mover:IsA("BodyPosition") or mover:IsA("BodyVelocity") then
-                    table.insert(suspended, {item = mover, force = mover.MaxForce})
+                    suspended[#suspended + 1] = {item = mover, force = mover.MaxForce}
                     mover.MaxForce = Vector3.zero
                 end
             end
@@ -1505,48 +1513,69 @@ local function requestRefill(manual)
             root.CFrame = destinationCFrame
             root.AssemblyLinearVelocity = Vector3.zero
             root.AssemblyAngularVelocity = Vector3.zero
-            setRefillStatus(station.savedCFrame and "At saved refill location."
-                or ("At " .. station.part:GetFullName()))
-            task.wait(1)
-            local completed, operationError = false, nil
-            local interactionThread = task.spawn(function()
-                local callOK, callError = pcall(function()
-                    assert(not game:GetService("UserInputService"):GetFocusedTextBox(),
-                        "Close the chat/text box before refilling.")
-                    local input = game:GetService("VirtualInputManager")
-                    setRefillStatus("At refill station; pressing R.")
+            task.wait(0.75)
+            local input = game:GetService("VirtualInputManager")
+            local function pressRefill()
+                assert(not game:GetService("UserInputService"):GetFocusedTextBox(),
+                    "Close the chat/text box before refilling.")
+                local held = false
+                local pressed, pressError = pcall(function()
+                    held = true
                     input:SendKeyEvent(true, Enum.KeyCode.R, false, game)
-                    task.wait(0.2)
+                    task.wait(math.max(0.2, (station.prompt and station.prompt.HoldDuration or 0) + 0.05))
                     input:SendKeyEvent(false, Enum.KeyCode.R, false, game)
+                    held = false
                 end)
-                if not callOK then operationError = tostring(callError) end
-                completed = true
-            end)
-            local deadline = os.clock() + math.max(10, (station.prompt and station.prompt.HoldDuration or 0) + 3)
-            repeat
-                task.wait(0.25)
-                local count = readBladeCount(findBladeSets())
-                if before ~= nil and count ~= nil and count > before then
-                    if farmingBeforeRefill and (v4.oldfarmEnabled or v4.autofarmEnabled)
-                        and localPlayer.Character == character and root.Parent then
-                        root.CFrame = returnCFrame
-                        root.AssemblyLinearVelocity = Vector3.zero
-                        root.AssemblyAngularVelocity = Vector3.zero
+                if held then pcall(function() input:SendKeyEvent(false, Enum.KeyCode.R, false, game) end) end
+                if not pressed then error(pressError, 0) end
+            end
+            local deadline = os.clock() + 20
+            local refillPresses, nextPressAt = 0, 0
+            local reloadSent = false
+            local fullSince
+            while os.clock() < deadline do
+                if not validCharacter() then error("Character changed during refill.", 0) end
+                local count, maximum = readBladeCount(findBladeSets())
+                local equipped = equippedBladeVisible()
+                if count ~= nil and maximum ~= nil and maximum > 0 then
+                    setRefillStatus("Refilling: " .. count .. "/" .. maximum .. "; waiting for full supplies.")
+                    -- If equipping consumes a spare set, top up again at the station.
+                    if count > 0 and equipped == false and not reloadSent then
+                        reloadSent = true
+                        v4.attackCallInFlight = true
+                        local reloadOK, reloadError = pcall(v4.remoteGet.InvokeServer, v4.remoteGet, "Blades", "Reload")
+                        v4.attackCallInFlight = false
+                        if not reloadOK then error(reloadError, 0) end
+                        fullSince = nil
+                        task.wait(0.5)
+                    elseif count == maximum and equipped ~= false then
+                        fullSince = fullSince or os.clock()
+                        if os.clock() - fullSince >= 1 then
+                            v4.refillPending = false
+                            if farming and (v4.oldfarmEnabled or v4.autofarmEnabled)
+                                and generation == v4.inputGeneration and validCharacter() then
+                                root.CFrame = returnCFrame
+                                root.AssemblyLinearVelocity = Vector3.zero
+                                root.AssemblyAngularVelocity = Vector3.zero
+                            end
+                            setRefillStatus("Full supplies confirmed: " .. count .. "/" .. maximum .. ".")
+                            return
+                        end
+                    else
+                        fullSince = nil
+                        if count < maximum and refillPresses < 3 and os.clock() >= nextPressAt then
+                            refillPresses = refillPresses + 1
+                            pressRefill()
+                            nextPressAt = os.clock() + 4
+                        end
                     end
-                    setRefillStatus("Blade sets increased: " .. before .. " -> " .. count .. ". Refill confirmed.")
-                    return
+                else
+                    fullSince = nil
+                    setRefillStatus("Blade-count HUD unavailable; combat remains paused.")
                 end
-                if completed and operationError then error(operationError, 0) end
-                if not root.Parent then error("Character changed during refill.", 0) end
-            until os.clock() >= deadline
-            if not completed then
-                if type(task.cancel) == "function" then pcall(task.cancel, interactionThread) end
-                error("Refill interaction timed out; combat stays paused while supplies are empty.", 0)
+                task.wait(0.2)
             end
-            if before == nil then
-                error("Interaction sent; blade-count UI not found, so replenishment is unverified.", 0)
-            end
-            error("Interaction sent, but blade count did not increase.", 0)
+            error("Full refill not confirmed; staying paused and retrying later.", 0)
         end, function(message) return tostring(message) end)
         for _, saved in ipairs(suspended) do
             if saved.item.Parent then
@@ -2688,8 +2717,8 @@ combatStatus.TextXAlignment = Enum.TextXAlignment.Left
 combatStatus.Parent = v3["1"]
 local function diagShow(stage)
     if not combatStatus.Parent then return end
-    combatStatus.Text = "Nearby multi-target test\n" .. tostring(stage)
-        .. "\nRequests: " .. diagCount .. " | Returned: " .. diagReturned
+    combatStatus.Text = "M1 / 3-target test\n" .. tostring(stage)
+        .. "\nM1: " .. (v4.m1Count or 0) .. " | Requests: " .. diagCount .. " | Returned: " .. diagReturned
         .. "\n" .. diagDetail
 end
 local function diagHit(...)
@@ -2715,10 +2744,10 @@ diagShow("Ready; enable an autofarm mode")
 
 -- Nearby-target sweeps. Server validation still decides which hits count.
 local CombatConfig = {
-    AttackInterval = 0.20,
-    OPAttackInterval = 0.15,
-    MaxTargetsPerSweep = 6,
-    MaxSweepSeconds = 2.5,
+    AttackInterval = 0.40,
+    OPAttackInterval = 0.40,
+    MaxTargetsPerSweep = 3,
+    MaxSweepSeconds = 0.35,
     RegularRange = 175,
     BossRange = 250,
 }
@@ -2791,48 +2820,62 @@ end
 local nextHitAt = 0
 local sweepRunning = false
 local function hitBurst(anchor, maxDistance)
-    if sweepRunning then return end
+    if sweepRunning or type(v4.performM1) ~= "function" or v4.centerClickFailed then return end
     sweepRunning = true
-    -- Keep movement aimed at its selected target, not each remote candidate.
+    v4.m1GroupInFlight = true
     v4.attackTarget = anchor
     local character = localPlayer.Character
     local generation = v4.inputGeneration
-    local startedAt = os.clock()
-    local sent, available = 0, 0
+    local sent, available, clicked = 0, 0, false
+    local swingStartedAt
     local function canContinue()
         return localPlayer.Character == character
             and v4.inputGeneration == generation
             and farmActive()
             and not refillBlocksCombat()
             and not v4.skillCasting
-            and os.clock() - startedAt < CombatConfig.MaxSweepSeconds
+            and not v4.refillPending
+            and not v4.UIP:GetFocusedTextBox()
+            and (not swingStartedAt or os.clock() - swingStartedAt < CombatConfig.MaxSweepSeconds)
     end
     local ok, err = pcall(function()
+        while os.clock() < nextHitAt do
+            if not canContinue() then return end
+            task.wait(math.max(0, math.min(0.03, nextHitAt - os.clock())))
+        end
+        if not canContinue() then return end
         local candidates = CombatManager.NearbyTargets(anchor)
         available = #candidates
-        diagDetail = "Nearby targets found: " .. available
-        diagShow("Nearby sweep")
+        if available == 0 then return end
+        -- Exactly one M1 input for this group of at most three targets.
+        clicked = v4.performM1() == true
+        if not clicked then
+            diagDetail = "M1 input blocked; no target requests sent."
+            return
+        end
+        v4.m1Count = (v4.m1Count or 0) + 1
+        v4.autoAttack = true
+        swingStartedAt = os.clock()
         for _, candidate in ipairs(candidates) do
             if not canContinue() then break end
-            while os.clock() < nextHitAt do
-                if not canContinue() then return end
-                task.wait(math.max(0, math.min(0.03, nextHitAt - os.clock())))
-            end
-            if not canContinue() then break end
             if CombatManager.CanAttack(candidate.target, candidate.range) then
-                -- One request per distinct Titan per sweep.
+                -- No per-target click or deliberate delay within this M1 group.
                 diagHit("Hitboxes", "Register", candidate.target,
                     math.random(215, 230), math.random(10, 100))
                 sent = sent + 1
-                nextHitAt = os.clock() + attackInterval()
             end
         end
     end)
+    if clicked then nextHitAt = os.clock() + attackInterval() end
     sweepRunning = false
+    v4.m1GroupInFlight = false
+    v4.autoAttack = false
     v4.attackTarget = nil
-    diagDetail = string.format(
-        "Nearby targets tried: %d/%d (damage unverified)", sent, available)
-    diagShow(ok and "Nearby sweep finished" or "Nearby sweep failed")
+    if clicked then
+        diagDetail = string.format("Last M1: %d/%d targets requested; damage unverified",
+            sent, available)
+    end
+    diagShow(ok and "M1 group finished" or "M1 group failed")
     if not ok then error(err, 0) end
 end
 local function v136() -- One attack worker, independent of frame rate.
@@ -2949,6 +2992,7 @@ local function clickOnce()
     vim:SendMouseButtonEvent(position.X, position.Y, 0, false, game, 0)
     return true
 end
+v4.performM1 = clickOnce
 -- Independent Auto Skill toggle below OP Autofarm.
 v4.autoSkillEnabled = v3.autoSkillEnabled == true
 v4.skillCasting = false
@@ -2959,7 +3003,8 @@ local function inputAllowed()
     local character = localPlayer.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     return v3["1"].Parent and humanoid and humanoid.Health > 0
-        and not v4.UIP:GetFocusedTextBox() and not v4.refilling and not missionResults()
+        and not v4.UIP:GetFocusedTextBox() and not v4.refilling
+        and not v4.refillPending and not missionResults()
 end
 local function refreshAutoSkill()
     autoSkillButton.BackgroundColor3 = v4.autoSkillEnabled and Color3.new(0, 1, 0) or Color3.fromRGB(171, 0, 0)
@@ -3123,23 +3168,13 @@ local function clickSkill(slot)
     if not ok then warn("Yozakura Auto Skill: " .. tostring(err)) end
 end
 task.spawn(function()
-    local nextClickAt = 0
     while v3["1"].Parent do
-        if inputAllowed() and v4.autoSkillEnabled then
+        if inputAllowed() and v4.autoSkillEnabled and not v4.m1GroupInFlight then
             local ok, slot = pcall(nextSkill)
             if ok and slot then clickSkill(slot)
             elseif not ok then reportSkillStatus("HUD lookup error: " .. tostring(slot)) end
         end
-        v4.autoAttack = inputAllowed() and farmActive() and not v4.centerClickFailed and not v4.skillCasting
-        if v4.autoAttack and os.clock() >= nextClickAt then
-            local ok, clicked = pcall(clickOnce)
-            nextClickAt = os.clock() + attackInterval()
-            if not ok then
-                v4.centerClickFailed = true
-                v4.autoAttack = false
-                v2("M1 input unavailable", tostring(clicked), 8)
-            end
-        end
+        -- M1 input belongs exclusively to the combat worker.
         task.wait(0.03)
     end
     if skillAddedConnection then skillAddedConnection:Disconnect() end
@@ -3171,7 +3206,7 @@ task.spawn(function()
         end
         if v4.bladeEnabled and not v4.refilling then
             local count, maximum = readBladeCount(label)
-            if count == 0 and equippedBladeVisible() == false then
+            if needsStationRefill() then
                 requestRefill(false)
             elseif count == 0 then
                 setRefillStatus("0 spare sets; equipped blade still visible or unverified. Combat remains enabled.")
