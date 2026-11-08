@@ -1868,256 +1868,7 @@ v4.UIP.InputEnded:Connect(function(v36) --[[ Line: 67 ]] --[[ Name: 25ms ]]
         v3["1"].Enabled = not v3["1"].Enabled;
     end;
 end);
--- OP-only routing and observed performance; no floating damage effects.
-do
-    local op = {
-        Range = 35, Interval = 0.4, Window = 0.35,
-        StallSeconds = 2.5, Entries = {}, lastRefresh = -math.huge,
-    }
-    v4.opFarm = op
-
-    function op:Start()
-        if self.wasOP and self.session and not self.session.finished then return end
-        self:Disconnect()
-        self.wasOP = true
-        self.session = {started = os.clock(), damage = 0, deaths = 0,
-            ttkTotal = 0, ttkCount = 0, switches = 0, swings = 0,
-            skillConfirmed = 0, skillFailed = 0, lastWindow = 0}
-        self.nextM1 = 0
-        self.current = nil
-        self.lastRefresh = -math.huge
-    end
-
-    function op:Disconnect()
-        for _, entry in pairs(self.Entries) do
-            if entry.connection then entry.connection:Disconnect() end
-        end
-        self.Entries = {}
-        self.current = nil
-        self.swing = nil
-    end
-
-    function op:Observe(entry, health)
-        local previous = entry.health
-        entry.health = health
-        if health < previous then
-            entry.lastDrop = os.clock()
-            if entry.firstAttack and entry.session == self.session then
-                self.session.damage = self.session.damage + previous - health
-            end
-            local swing = self.swing
-            if swing and os.clock() <= swing.deadline and swing.targets[entry] then
-                swing.damaged[entry] = true
-            end
-        end
-        if health <= 0 then
-            if entry.firstAttack and not entry.deathRecorded and entry.session == self.session then
-                entry.deathRecorded = true
-                self.session.deaths = self.session.deaths + 1
-                self.session.ttkTotal = self.session.ttkTotal + os.clock() - entry.firstAttack
-                self.session.ttkCount = self.session.ttkCount + 1
-            end
-            if v4.autofarmEnabled and self.current == entry then
-                self.current = nil
-                v4.nape, v4.attackTarget = nil, nil
-            end
-        end
-    end
-
-    function op:Refresh()
-        if os.clock() - self.lastRefresh < 0.2 then return end
-        self.lastRefresh = os.clock()
-        local seen = {}
-        for _, model in ipairs(v4.titans:GetChildren()) do
-            local humanoid = model:IsA("Model") and model:FindFirstChildOfClass("Humanoid")
-            if humanoid then
-                seen[humanoid] = true
-                local entry = self.Entries[humanoid]
-                if not entry then
-                    entry = {model = model, humanoid = humanoid, health = humanoid.Health,
-                        misses = 0, session = self.session}
-                    self.Entries[humanoid] = entry
-                    entry.connection = humanoid.HealthChanged:Connect(function(health)
-                        self:Observe(entry, health)
-                    end)
-                end
-                local target = findPath(model, {"Hitboxes", "Hit", "Nape"})
-                if model.Name == "Attack_Titan" then
-                    local marker = model:FindFirstChild("Marker")
-                    local marked = marker and (marker:IsA("BillboardGui") or marker:IsA("Highlight"))
-                        and marker.Adornee
-                    if marked and marked:IsA("BasePart") and marked:IsDescendantOf(model) then target = marked end
-                end
-                entry.target = target
-            end
-        end
-        for humanoid, entry in pairs(self.Entries) do
-            if not seen[humanoid] then
-                entry.connection:Disconnect()
-                self.Entries[humanoid] = nil
-                if self.current == entry then self.current = nil end
-            end
-        end
-    end
-
-    function op:Root()
-        local character = localPlayer.Character
-        local root = character and character:FindFirstChild("HumanoidRootPart")
-        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-        if root and root:IsA("BasePart") and humanoid and humanoid.Health > 0 then
-            return root
-        end
-    end
-
-    function op:Alive(entry)
-        return entry and entry.humanoid.Parent and entry.humanoid.Health > 0
-            and entry.target and entry.target:IsA("BasePart")
-            and entry.target:IsDescendantOf(v4.titans)
-    end
-
-    function op:SelectTarget()
-        self:Start()
-        local root = self:Root()
-        if not root or not v4.titans then return nil end
-        self:Refresh()
-        local locked = self.current
-        local stalled = self:Alive(locked) and locked.firstAttack
-            and os.clock() - math.max(locked.lastDrop or locked.firstAttack, locked.selectedAt or 0) >= self.StallSeconds
-        if self:Alive(locked) then
-            local distance = (root.Position - locked.target.Position).Magnitude
-            if not locked.travelBest or distance < locked.travelBest - 3 then
-                locked.travelBest, locked.travelProgress = distance, os.clock()
-            elseif distance > self.Range and os.clock() - (locked.travelProgress or os.clock()) > 4 then
-                stalled = true
-            end
-        end
-        if self:Alive(locked) and not stalled then return locked.target end
-        local selected, nearest = nil, math.huge
-        for _, entry in pairs(self.Entries) do
-            if self:Alive(entry) and entry ~= (stalled and locked or nil) then
-                local distance = (root.Position - entry.target.Position).Magnitude
-                if distance < nearest then selected, nearest = entry, distance end
-            end
-        end
-        if not selected and self:Alive(locked) then selected = locked end
-        if selected ~= locked then
-            if stalled then self.session.switches = self.session.switches + 1 end
-            self.current = selected
-            if selected then
-                selected.selectedAt = os.clock()
-                selected.travelBest = (root.Position - selected.target.Position).Magnitude
-                selected.travelProgress = os.clock()
-            end
-            v4.attackTarget = nil
-        end
-        return selected and selected.target
-    end
-
-    function op:Candidates(anchor)
-        self:Refresh()
-        local root = self:Root()
-        local candidates = {}
-        if not root then return candidates end
-        for _, entry in pairs(self.Entries) do
-            if self:Alive(entry) then
-                local distance = (root.Position - entry.target.Position).Magnitude
-                if distance <= self.Range and (entry.target == anchor
-                    or os.clock() >= (entry.retryAt or 0)) then
-                    candidates[#candidates + 1] = {entry = entry, target = entry.target, distance = distance}
-                end
-            end
-        end
-        table.sort(candidates, function(a, b)
-            if a.target == anchor then return b.target ~= anchor end
-            if b.target == anchor then return false end
-            return a.distance < b.distance
-        end)
-        while #candidates > 5 do table.remove(candidates) end
-        return candidates
-    end
-
-    function op:CloseWindow(force)
-        local swing = self.swing
-        if not swing or (not force and os.clock() < swing.deadline) then return end
-        local count = 0
-        for entry in pairs(swing.targets) do
-            if swing.damaged[entry] then
-                count = count + 1
-                entry.misses, entry.retryAt = 0, nil
-            elseif swing.requested[entry] then
-                entry.misses = entry.misses + 1
-                if entry.misses >= 3 then entry.retryAt = os.clock() + 2 end
-            end
-        end
-        self.session.lastWindow = count
-        self.session.lastRequests = swing.requests or 0
-        self.swing = nil
-    end
-
-    function op:Status(stage)
-        local s = self.session
-        if not s then return "OP Farm: waiting" end
-        local elapsed = (s.stopped or os.clock()) - s.started
-        local ttk = s.ttkCount > 0 and string.format("%.2fs", s.ttkTotal / s.ttkCount) or "pending"
-        return string.format("OP elapsed %.1fs | observed HP loss %.0f\n"
-            .. "HP-confirmed deaths %d | mean engagement %s\n"
-            .. "Last window: %d targets HP down | requests %d\n"
-            .. "Skill cooldowns %d | unconfirmed %d | retargets %d\n%s%s",
-            elapsed, s.damage, s.deaths, ttk, s.lastWindow, s.lastRequests or 0,
-            s.skillConfirmed, s.skillFailed, s.switches, tostring(stage or ""),
-            s.resultTime and (" | Result time: " .. s.resultTime) or "")
-    end
-
-    function op:Finish()
-        local s = self.session
-        if not s or s.finished then return end
-        self:CloseWindow(true)
-        s.stopped, s.finished = os.clock(), true
-        local main = findPath(localPlayer, {"PlayerGui", "Interface", "Rewards", "Main"})
-        local times = {}
-        if main then
-            for _, object in ipairs(main:GetDescendants()) do
-                if (object:IsA("TextLabel") or object:IsA("TextButton")) and guiIsShown(object) then
-                    local value = object.Text:match("^%s*(%d+:%d%d:%d%d)%s*$")
-                    if value then times[value] = true end
-                end
-            end
-        end
-        local unique
-        for value in pairs(times) do
-            if unique then unique = nil; break end
-            unique = value
-        end
-        s.resultTime = unique
-        print("[Yozakura OP observed results] " .. self:Status("Mission results opened"))
-    end
-
-    task.spawn(function()
-        while v3["1"].Parent do
-            if op.session and op.wasOP and missionResults() then
-                op:Finish()
-                if op.render then op.render(op:Status("Mission results; compare the game result screen")) end
-            end
-            if v4.autofarmEnabled and not missionResults() then
-                op:Start()
-                op:CloseWindow(false)
-                if op.render then op.render(op:Status(v4.refilling and "Refilling" or "Observing; HP may include other players")) end
-            elseif op.wasOP then
-                if op.session then op.session.stopped = op.session.stopped or os.clock() end
-                op:Disconnect()
-                op.wasOP = false
-            end
-            task.wait(0.1)
-        end
-        op:Disconnect()
-    end)
-end
-
 local function v46() --[[ Line: 67 ]] --[[ Name: 25ms ]]
-    if v4.autofarmEnabled and v4.opFarm then
-        v4.nape = v4.opFarm:SelectTarget()
-        return
-    end
     -- upvalues: v4 (ref)
     -- Keep a living regular Titan selected; let boss markers be re-evaluated.
     local locked = v4.attackTarget or v4.nape
@@ -2905,7 +2656,6 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
         if v4.titans:FindFirstChild("Attack_Titan") then
             v123 = 195;
         end;
-        if v4.autofarmEnabled then v123 = 6 end -- OP approaches the actual weak point.
         if v4.nape ~= nil then
             local l_BV_0 = v4.root:FindFirstChild("BV");
             if l_BV_0 then
@@ -2969,17 +2719,8 @@ combatStatus.Font = Enum.Font.Code
 combatStatus.TextWrapped = true
 combatStatus.TextXAlignment = Enum.TextXAlignment.Left
 combatStatus.Parent = v3["1"]
-if v4.opFarm then
-    v4.opFarm.render = function(message)
-        if combatStatus.Parent then combatStatus.Text = tostring(message) end
-    end
-end
 local function diagShow(stage)
     if not combatStatus.Parent then return end
-    if v4.autofarmEnabled and v4.opFarm then
-        combatStatus.Text = v4.opFarm:Status(stage)
-        return
-    end
     combatStatus.Text = "M1 / 5-target trial\n" .. tostring(stage)
         .. "\nM1: " .. (v4.m1Count or 0) .. " | Requests: " .. diagCount .. " | Returned: " .. diagReturned
         .. "\n" .. diagDetail
@@ -2988,10 +2729,17 @@ local function diagHit(...)
     if v4.skillCasting then return nil end
     diagCount = diagCount + 1
     diagShow("Waiting for server response")
+    local trackedBatch = v4.opMultiHit and v4.opMultiHit.activeBatch
+    if trackedBatch then v4.multiHitCallsPending = (v4.multiHitCallsPending or 0) + 1 end
     v4.attackCallInFlight = true
     local startedAt = os.clock()
     local ok, result = pcall(v4.remoteGet.InvokeServer, v4.remoteGet, ...)
-    v4.attackCallInFlight = false
+    if trackedBatch then
+        v4.multiHitCallsPending = math.max(0, (v4.multiHitCallsPending or 1) - 1)
+        v4.attackCallInFlight = v4.multiHitCallsPending > 0
+    else
+        v4.attackCallInFlight = false
+    end
     if not ok then
         diagDetail = tostring(result):sub(1, 140)
         diagShow("Request failed")
@@ -3100,62 +2848,114 @@ function CombatManager.RegisterTarget(target)
     return diagHit("Hitboxes", "Register", target, speed, 0)
 end
 
-function v4.opFarm:Attack(anchor)
-    if v4.fiveTestActive or self.skillWanted or v4.skillCasting
-        or v4.m1GroupInFlight or v4.centerClickFailed
-        or type(v4.performM1) ~= "function" then return end
-    self:Start()
-    local character, generation = localPlayer.Character, v4.inputGeneration
-    local function valid()
-        return v4.autofarmEnabled and localPlayer.Character == character
-            and v4.inputGeneration == generation and not v4.skillCasting
-            and not self.skillWanted and not v4.fiveTestActive
-            and not v4.refillPending and not refillBlocksCombat()
-            and not v4.UIP:GetFocusedTextBox()
+-- OP-only single-M1 dispatch. At most one request per distinct Titan.
+do
+    local multi = {running = false, nextM1 = 0}
+    v4.opMultiHit = multi
+
+    function multi:Pending()
+        return self.activeBatch and self.activeBatch.pending > 0
     end
-    if not valid() or os.clock() < self.nextM1 then return end
-    local candidates = self:Candidates(anchor)
-    if #candidates == 0 then return end
-    self:CloseWindow(true)
-    local swing = {targets = {}, requested = {}, damaged = {}, deadline = os.clock() + 0.4, requests = 0}
-    for _, candidate in ipairs(candidates) do swing.targets[candidate.entry] = true end
-    self.swing = swing
-    v4.m1GroupInFlight = true
-    v4.attackTarget = anchor
-    local clicked = false
-    local ok, err = pcall(function()
-        -- Record before input so native M1 health changes are observed too.
-        local started = os.clock()
+
+    function multi:Dispatch(candidates, valid, startedAt)
+        assert(not self:Pending(), "A previous M1 batch is still waiting for server replies.")
+        local batch = {pending = 0, items = {}, timedOut = false}
+        self.activeBatch = batch
+        local seen = {}
         for _, candidate in ipairs(candidates) do
-            local entry = candidate.entry
-            entry.firstAttack = entry.firstAttack or started
-            entry.session = self.session
-        end
-        clicked = v4.performM1() == true
-        if not clicked then return end
-        self.session.swings = self.session.swings + 1
-        v4.m1Count = (v4.m1Count or 0) + 1
-        self.nextM1 = started + self.Interval
-        for _, candidate in ipairs(candidates) do
-            if not valid() or os.clock() - started >= self.Window then break end
-            if CombatManager.CanAttack(candidate.target, self.Range) then
-                CombatManager.RegisterTarget(candidate.target)
-                swing.requested[candidate.entry] = true
-                swing.requests = swing.requests + 1
+            if #batch.items >= 5 or not valid()
+                or os.clock() - startedAt >= CombatConfig.MaxSweepSeconds then break end
+            local humanoid = CombatManager.TargetHumanoid(candidate.target)
+            if humanoid and not seen[humanoid]
+                and CombatManager.CanAttack(candidate.target, candidate.range) then
+                seen[humanoid] = true
+                candidate.requested = true
+                candidate.dispatchedAt = os.clock()
+                batch.items[#batch.items + 1] = candidate
+                batch.pending = batch.pending + 1
+                -- InvokeServer yields inside each worker. Launch the next distinct
+                -- target without waiting for this one's response. No extra M1.
+                task.spawn(function()
+                    local ok, result = pcall(CombatManager.RegisterTarget, candidate.target)
+                    candidate.returned = true
+                    candidate.callOK = ok
+                    candidate.reply = tostring(result):sub(1, 28)
+                    candidate.returnedAt = os.clock()
+                    batch.pending = batch.pending - 1
+                    if batch.timedOut and batch.pending == 0 then
+                        if self.activeBatch == batch then self.activeBatch = nil end
+                        v4.m1GroupInFlight = false
+                    end
+                end)
             end
         end
-    end)
-    v4.m1GroupInFlight = false
-    v4.autoAttack = false
-    v4.attackTarget = nil
-    if not clicked then self.swing = nil end
-    if not ok then error(err, 0) end
+        local deadline = os.clock() + 2
+        while batch.pending > 0 and os.clock() < deadline do task.wait(0.01) end
+        if batch.pending > 0 then
+            -- Do not retry unresolved requests or start a second group.
+            batch.timedOut = true
+            error("M1 replies still pending; batch remains locked until all return.", 0)
+        end
+        self.activeBatch = nil
+        for _, candidate in ipairs(batch.items) do
+            if not candidate.callOK then error("Hit registration failed: " .. candidate.reply, 0) end
+        end
+        return batch.items
+    end
+
+    function multi:Run(anchor)
+        if self.running or self:Pending() or v4.fiveTestActive
+            or v4.skillCasting or v4.centerClickFailed
+            or type(v4.performM1) ~= "function" then return end
+        self.running = true
+        local character, generation = localPlayer.Character, v4.inputGeneration
+        local function valid()
+            return v4.autofarmEnabled and localPlayer.Character == character
+                and v4.inputGeneration == generation and not v4.skillCasting
+                and not v4.fiveTestActive and not v4.refillPending
+                and not refillBlocksCombat() and not v4.UIP:GetFocusedTextBox()
+        end
+        local clicked, sent = false, 0
+        v4.m1GroupInFlight = true
+        v4.attackTarget = anchor
+        local ok, err = pcall(function()
+            while os.clock() < self.nextM1 do
+                if not valid() then return end
+                task.wait(math.max(0, math.min(0.03, self.nextM1 - os.clock())))
+            end
+            if not valid() then return end
+            local candidates = CombatManager.NearbyTargets(anchor)
+            if #candidates == 0 then return end
+            clicked = v4.performM1() == true
+            if not clicked then
+                diagDetail = "M1 blocked; no target requests sent."
+                return
+            end
+            v4.m1Count = (v4.m1Count or 0) + 1
+            local items = self:Dispatch(candidates, valid, os.clock())
+            sent = #items
+        end)
+        if clicked then self.nextM1 = os.clock() + attackInterval() end
+        self.running = false
+        v4.autoAttack = false
+        v4.attackTarget = nil
+        if not self:Pending() then v4.m1GroupInFlight = false end
+        if ok and clicked then
+            diagDetail = string.format(
+                "One M1: %d distinct requests dispatched together; HP unverified", sent)
+        elseif not ok then
+            diagDetail = tostring(err)
+        end
+        diagShow(ok and "OP multi-hit timing trial" or "OP multi-hit stopped")
+        if not ok then error(err, 0) end
+    end
 end
 
 local nextHitAt = 0
 local sweepRunning = false
 local function hitBurst(anchor, maxDistance)
-    if v4.autofarmEnabled and v4.opFarm then return v4.opFarm:Attack(anchor) end
+    if v4.opMultiHit:Pending() then return end
+    if v4.autofarmEnabled then return v4.opMultiHit:Run(anchor) end
     if sweepRunning or v4.fiveTestActive or type(v4.performM1) ~= "function" or v4.centerClickFailed then return end
     sweepRunning = true
     v4.m1GroupInFlight = true
@@ -3267,6 +3067,9 @@ function CombatManager.TestFiveTargets()
         local startedAt = os.clock()
         local requested = 0
         v4.fiveTestReport("One M1 sent. Sending up to five target requests; observing health...")
+        if v4.autofarmEnabled then
+            requested = #v4.opMultiHit:Dispatch(candidates, valid, startedAt)
+        else
         for _, candidate in ipairs(candidates) do
             if not valid() or os.clock() - startedAt >= CombatConfig.MaxSweepSeconds then break end
             if CombatManager.CanAttack(candidate.target, candidate.range) then
@@ -3274,6 +3077,7 @@ function CombatManager.TestFiveTargets()
                 candidate.requested = true
                 requested = requested + 1
             end
+        end
         end
         -- No automatic attacks or skills run during this observation window.
         local observeUntil = os.clock() + 1.2
@@ -3304,7 +3108,7 @@ function CombatManager.TestFiveTargets()
         print("[Yozakura five-target trial] requests=" .. requested .. "/5, observed HP drops=" .. changed .. "/5")
     end, function(message) return tostring(message) end)
     for _, observer in ipairs(observers) do observer:Disconnect() end
-    if ownsGroup then v4.m1GroupInFlight = false end
+    if ownsGroup and not v4.opMultiHit:Pending() then v4.m1GroupInFlight = false end
     v4.fiveTestActive = false
     if not ok then v4.fiveTestReport("Test incomplete: " .. tostring(err)) end
 end
@@ -3361,9 +3165,8 @@ local function v136() -- One attack worker, independent of frame rate.
         v46();
         diagShow("Checking target distance")
         local target = v4.nape
-        local range = v4.autofarmEnabled and v4.opFarm.Range
-            or (missionTitans:FindFirstChild("Attack_Titan")
-            and CombatConfig.BossRange or CombatConfig.RegularRange)
+        local range = missionTitans:FindFirstChild("Attack_Titan")
+            and CombatConfig.BossRange or CombatConfig.RegularRange
         if farmActive() and not refillBlocksCombat() and CombatManager.CanAttack(target, range) then
             hitBurst(target, range)
         end
@@ -3381,7 +3184,7 @@ local function v136() -- One attack worker, independent of frame rate.
             diagShow("Stopped after error")
             return
         end
-        local targetInterval = v4.autofarmEnabled and 0.03 or attackInterval()
+        local targetInterval = attackInterval()
         task.wait(math.max(0.01, targetInterval - (os.clock() - iterationStarted)))
     end
     v4.combatWorkerRunning = false
@@ -3542,7 +3345,6 @@ local function invalidateSkillCache(object)
     end
 end
 local function nextSkill()
-    if v4.autofarmEnabled and v4.opFarm.NextSkill then return v4.opFarm:NextSkill() end
     local pg = localPlayer:FindFirstChildOfClass("PlayerGui")
     if not pg then return nil end
     if pg ~= cachedPlayerGui then
@@ -3589,7 +3391,6 @@ local function nextSkill()
     return selected
 end
 local function clickSkill(slot)
-    if v4.autofarmEnabled and v4.opFarm.CastSkill then return v4.opFarm:CastSkill(slot) end
     local generation = skillToggleGeneration
     v4.skillCasting = true
     v4.autoAttack = false
@@ -3648,155 +3449,12 @@ local function clickSkill(slot)
     v4.skillCasting = false
     if not ok then warn("Yozakura Auto Skill: " .. tostring(err)) end
 end
--- OP-only skill input: one preferred method, one fallback, cooldown feedback.
-do
-    local op = v4.opFarm
-    op.skillSlots = {}
-    op.skillState = setmetatable({}, {__mode = "k"})
-    op.nextSkillScan = 0
-
-    function op:NextSkill()
-        local pg = localPlayer:FindFirstChildOfClass("PlayerGui")
-        if not pg then return nil end
-        if pg ~= self.skillGui or os.clock() >= self.nextSkillScan then
-            self.skillGui, self.nextSkillScan = pg, os.clock() + 1
-            self.skillSlots = {}
-            for _, slot in ipairs(pg:GetDescendants()) do
-                if slot:IsA("GuiObject") and not slot:IsDescendantOf(v3["1"]) then
-                    local name = slot.Name:lower()
-                    local number = tonumber(name:match("^skill[_%- ]?(%d+)$"))
-                    if not number and slot.Parent and slot.Parent.Name:lower():match("^skills?$") then
-                        number = tonumber(name:match("^(%d+)$"))
-                    end
-                    if (number == 1 or number == 2) and slot:FindFirstChild("Cooldown", true)
-                        and slot:FindFirstChild("Icon", true) then
-                        self.skillSlots[#self.skillSlots + 1] = {slot = slot, number = number}
-                    end
-                end
-            end
-        end
-        local chosen, oldest
-        for _, info in ipairs(self.skillSlots) do
-            local slot = info.slot
-            if slot:IsDescendantOf(pg) then
-                local state = self.skillState[slot] or {retryAt = 0, failures = 0, attemptedAt = -math.huge}
-                self.skillState[slot] = state
-                local cooldown = slot:FindFirstChild("Cooldown", true)
-                if cooldown and cooldown.Visible then
-                    state.sawCooldown = true
-                elseif state.sawCooldown then
-                    state.sawCooldown, state.retryAt, state.failures = false, 0, 0
-                end
-                if skillReady(slot) and os.clock() >= state.retryAt
-                    and (not chosen or state.attemptedAt < oldest) then
-                    chosen, oldest = info, state.attemptedAt
-                end
-            end
-        end
-        return chosen and chosen.slot
-    end
-
-    function op:CastSkill(slot)
-        self.skillWanted = false
-        if not v4.autofarmEnabled or v4.m1GroupInFlight or not inputAllowed()
-            or not skillReady(slot) then return end
-        local state = self.skillState[slot] or {failures = 0}
-        self.skillState[slot] = state
-        local character, inputGeneration = localPlayer.Character, v4.inputGeneration
-        local toggleGeneration = skillToggleGeneration
-        local heldKey, mouseHeld, point
-        local attempted, confirmed = false, false
-        local function valid()
-            return v4.autofarmEnabled and v4.autoSkillEnabled and inputAllowed()
-                and localPlayer.Character == character and v4.inputGeneration == inputGeneration
-                and skillToggleGeneration == toggleGeneration
-        end
-        local function cooldownStarted()
-            local cooldown = slot:FindFirstChild("Cooldown", true)
-            return cooldown and cooldown:IsA("GuiObject") and cooldown.Visible
-        end
-        local function waitForCooldown()
-            local deadline = os.clock() + 0.25
-            repeat
-                if cooldownStarted() then return true end
-                if not valid() then return false end
-                task.wait(0.02)
-            until os.clock() >= deadline
-            return cooldownStarted()
-        end
-        local function keyInput()
-            local number
-            for _, info in ipairs(self.skillSlots) do if info.slot == slot then number = info.number; break end end
-            if not number then return false end
-            heldKey = number == 1 and Enum.KeyCode.One or Enum.KeyCode.Two
-            attempted = true
-            v4.VIM:SendKeyEvent(true, heldKey, false, game)
-            task.wait(0.05)
-            v4.VIM:SendKeyEvent(false, heldKey, false, game)
-            heldKey = nil
-            return true
-        end
-        local function mouseInput()
-            point = slot.AbsolutePosition + slot.AbsoluteSize * 0.5
-            local screen = slot:FindFirstAncestorWhichIsA("ScreenGui")
-            if screen and not screen.IgnoreGuiInset then point = point + game:GetService("GuiService"):GetGuiInset() end
-            local pg = localPlayer:FindFirstChildOfClass("PlayerGui")
-            local top = pg and pg:GetGuiObjectsAtPosition(point.X, point.Y)[1]
-            if not top or not (top == slot or top:IsDescendantOf(slot)) then return false end
-            mouseHeld, attempted = true, true
-            v4.VIM:SendMouseButtonEvent(point.X, point.Y, 0, true, game, 0)
-            task.wait(0.05)
-            v4.VIM:SendMouseButtonEvent(point.X, point.Y, 0, false, game, 0)
-            mouseHeld = false
-            return true
-        end
-        v4.skillCasting = true
-        local ok, err = pcall(function()
-            if not valid() then return end
-            local touch = v4.UIP.TouchEnabled and not v4.UIP.KeyboardEnabled
-            local primary, fallback = touch and mouseInput or keyInput, touch and keyInput or mouseInput
-            if primary() then confirmed = waitForCooldown() end
-            if not confirmed and valid() and skillReady(slot) then
-                if fallback() then confirmed = waitForCooldown() end
-            end
-        end)
-        if heldKey then pcall(function() v4.VIM:SendKeyEvent(false, heldKey, false, game) end) end
-        if mouseHeld and point then pcall(function() v4.VIM:SendMouseButtonEvent(point.X, point.Y, 0, false, game, 0) end) end
-        v4.skillCasting = false
-        state.attemptedAt = os.clock()
-        if confirmed then
-            state.failures, state.sawCooldown = 0, true
-            state.retryAt = os.clock() + 0.4
-            if self.session then self.session.skillConfirmed = self.session.skillConfirmed + 1 end
-            reportSkillStatus("OP skill: cooldown transition observed.")
-        else
-            state.failures = state.failures + 1
-            state.retryAt = os.clock() + math.min(8, 2 ^ (state.failures - 1))
-            if attempted and self.session then self.session.skillFailed = self.session.skillFailed + 1 end
-            reportSkillStatus("OP skill unconfirmed; attacks resume. Retry in "
-                .. math.min(8, 2 ^ (state.failures - 1)) .. "s.")
-        end
-        if not ok then warn("Yozakura OP skill: " .. tostring(err)) end
-    end
-end
-
 task.spawn(function()
     while v3["1"].Parent do
-        if v4.autofarmEnabled then
-            if inputAllowed() and v4.autoSkillEnabled then
-                local ok, slot = pcall(nextSkill)
-                v4.opFarm.skillWanted = ok and slot ~= nil
-                if ok and slot and not v4.m1GroupInFlight then clickSkill(slot)
-                elseif not ok then reportSkillStatus("OP HUD lookup error: " .. tostring(slot)) end
-            else
-                v4.opFarm.skillWanted = false
-            end
-        else
         if inputAllowed() and v4.autoSkillEnabled and not v4.m1GroupInFlight then
             local ok, slot = pcall(nextSkill)
             if ok and slot then clickSkill(slot)
             elseif not ok then reportSkillStatus("HUD lookup error: " .. tostring(slot)) end
-        end
         end
         -- M1 input belongs exclusively to the combat worker.
         task.wait(0.03)
