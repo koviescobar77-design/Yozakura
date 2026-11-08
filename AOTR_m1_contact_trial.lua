@@ -2882,7 +2882,7 @@ do
                 .. "Extra multi requests: %s",
                 stage, distance and string.format("%.1f", distance) or "?",
                 self.swings, self.observedLoss, self.deaths,
-                self.nativeHPSeen and "allowed only for nearby weak points" or "waiting for native contact HP loss")
+                self.nativeHPSeen and "allowed only for nearby weak points" or "waiting for observed HP loss after input")
         end
     end
 
@@ -3007,9 +3007,14 @@ do
         v4.attackTarget = target
         local ok,err = pcall(function()
             local started = os.clock()
+            local previousInput=entry.firstInput
             entry.firstInput = entry.firstInput or started
             clicked = v4.performM1()==true
-            if not clicked then self:Report("M1 input blocked",distance); return end
+            if not clicked then
+                entry.firstInput=previousInput
+                self:Report("M1 input blocked",distance)
+                return
+            end
             self.swings = self.swings+1
             self.nextM1 = started+self.Interval
             if allowExtra and valid() then
