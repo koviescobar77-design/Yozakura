@@ -752,7 +752,7 @@ v3["1e"].TextColor3 = Color3.fromRGB(255, 255, 255);
 v3["1e"].BackgroundTransparency = 1;
 v3["1e"].Size = UDim2.new(0.56702, 0, 0.8005, 0);
 v3["1e"].BorderColor3 = Color3.fromRGB(0, 0, 0);
-v3["1e"].Text = "Nape Multi";
+v3["1e"].Text = "Nape Size";
 v3["1e"].Name = "multiLabel";
 v3["1e"].Position = UDim2.new(-5.8E-4, 0, 0.08696, 0);
 v3["1f"] = Instance.new("TextBox", v3["1e"]);
@@ -2672,72 +2672,71 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
 end;
 -- Local diagnostics only: no external reporting.
 local diagCount = 0
+local diagReturned = 0
 local diagDetail = ""
+local combatStatus = Instance.new("TextLabel")
+combatStatus.Name = "NearbyCombatStatus"
+combatStatus.Size = UDim2.fromOffset(310, 96)
+combatStatus.Position = UDim2.new(0, 12, 0, 72)
+combatStatus.BackgroundColor3 = Color3.fromRGB(20, 25, 32)
+combatStatus.BackgroundTransparency = 0.2
+combatStatus.TextColor3 = Color3.new(1, 1, 1)
+combatStatus.TextSize = 14
+combatStatus.Font = Enum.Font.Code
+combatStatus.TextWrapped = true
+combatStatus.TextXAlignment = Enum.TextXAlignment.Left
+combatStatus.Parent = v3["1"]
 local function diagShow(stage)
-    -- Screen diagnostics removed; gameplay does not depend on this display.
+    if not combatStatus.Parent then return end
+    combatStatus.Text = "Nearby multi-target test\n" .. tostring(stage)
+        .. "\nRequests: " .. diagCount .. " | Returned: " .. diagReturned
+        .. "\n" .. diagDetail
 end
 local function diagHit(...)
-    diagCount = diagCount + 1
-    diagShow("Waiting for attack call to return")
     if v4.skillCasting then return nil end
+    diagCount = diagCount + 1
+    diagShow("Waiting for server response")
     v4.attackCallInFlight = true
+    local startedAt = os.clock()
     local ok, result = pcall(v4.remoteGet.InvokeServer, v4.remoteGet, ...)
     v4.attackCallInFlight = false
-    if not ok then error(result) end
-    local kind = type(result)
-    local summary = kind
-    if kind == "string" or kind == "number" or kind == "boolean" or kind == "nil" then
-        summary = tostring(result):sub(1, 180)
+    if not ok then
+        diagDetail = tostring(result):sub(1, 140)
+        diagShow("Request failed")
+        error(result)
     end
-    diagDetail = "Call returned: " .. summary .. " (not proof of damage)"
-    diagShow("Attack call returned")
+    diagReturned = diagReturned + 1
+    diagDetail = string.format("Response in %.2fs; damage unverified",
+        os.clock() - startedAt)
+    diagShow("Request returned")
     return result
 end
+diagShow("Ready; enable an autofarm mode")
 
--- Local scheduling and validation only; these are not server damage/crit stats.
--- Request pacing only. The server decides which hits count.
+-- Nearby-target sweeps. Server validation still decides which hits count.
 local CombatConfig = {
     AttackInterval = 0.20,
     OPAttackInterval = 0.15,
-    AttemptsPerBurst = 6,
-    MaxBurstSeconds = 1.5,
+    MaxTargetsPerSweep = 6,
+    MaxSweepSeconds = 2.5,
     RegularRange = 175,
     BossRange = 250,
 }
-
 local function attackInterval()
     local interval = v4.autofarmEnabled
-        and CombatConfig.OPAttackInterval
-        or CombatConfig.AttackInterval
+        and CombatConfig.OPAttackInterval or CombatConfig.AttackInterval
     return math.max(0.10, interval)
 end
-
 local CombatManager = {}
-
 function CombatManager.CanAttack(target, maxDistance)
-    if v4.skillCasting or refillBlocksCombat() then
-        return false
-    end
-
+    if v4.skillCasting or refillBlocksCombat() then return false end
     local character = localPlayer.Character
-    local root = character
-        and character:FindFirstChild("HumanoidRootPart")
-    local ownHumanoid = character
-        and character:FindFirstChildOfClass("Humanoid")
-
-    if not root or not root:IsA("BasePart") then
-        return false
-    end
-    if not ownHumanoid or ownHumanoid.Health <= 0 then
-        return false
-    end
-    if not target or not target:IsA("BasePart") or not target.Parent then
-        return false
-    end
-    if not v4.titans or not target:IsDescendantOf(v4.titans) then
-        return false
-    end
-
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    local ownHumanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not root or not root:IsA("BasePart") then return false end
+    if not ownHumanoid or ownHumanoid.Health <= 0 then return false end
+    if not target or not target:IsA("BasePart") or not target.Parent then return false end
+    if not v4.titans or not target:IsDescendantOf(v4.titans) then return false end
     local ancestor = target.Parent
     local humanoid
     while ancestor and ancestor ~= v4.titans do
@@ -2745,78 +2744,96 @@ function CombatManager.CanAttack(target, maxDistance)
         if humanoid then break end
         ancestor = ancestor.Parent
     end
-
-    if not humanoid or humanoid.Health <= 0 then
-        return false
-    end
-    if (root.Position - target.Position).Magnitude > maxDistance then
-        return false
-    end
-
+    if not humanoid or humanoid.Health <= 0 then return false end
+    if (root.Position - target.Position).Magnitude > maxDistance then return false end
     v4.root = root
     return true
 end
 
+function CombatManager.NearbyTargets(anchor)
+    local candidates = {}
+    if not v4.titans then return candidates end
+    for _, titan in ipairs(v4.titans:GetChildren()) do
+        if titan:IsA("Model") then
+            local target = findPath(titan, {"Hitboxes", "Hit", "Nape"})
+            local range = CombatConfig.RegularRange
+            if titan.Name == "Attack_Titan" then
+                range = CombatConfig.BossRange
+                local marker = titan:FindFirstChild("Marker")
+                local marked = marker
+                    and (marker:IsA("BillboardGui") or marker:IsA("Highlight"))
+                    and marker.Adornee
+                -- Use the boss's marked weak point when one is available.
+                if marked and marked:IsA("BasePart") and marked:IsDescendantOf(titan) then
+                    target = marked
+                end
+            end
+            if CombatManager.CanAttack(target, range) then
+                candidates[#candidates + 1] = {
+                    target = target,
+                    range = range,
+                    distance = (v4.root.Position - target.Position).Magnitude,
+                }
+            end
+        end
+    end
+    table.sort(candidates, function(a, b)
+        if a.target == anchor then return b.target ~= anchor end
+        if b.target == anchor then return false end
+        return a.distance < b.distance
+    end)
+    while #candidates > CombatConfig.MaxTargetsPerSweep do
+        table.remove(candidates)
+    end
+    return candidates
+end
+
 local nextHitAt = 0
-local burstRunning = false
-
-local function hitBurst(target, maxDistance)
-    if burstRunning then return end
-
-    burstRunning = true
-    v4.attackTarget = target
-
+local sweepRunning = false
+local function hitBurst(anchor, maxDistance)
+    if sweepRunning then return end
+    sweepRunning = true
+    -- Keep movement aimed at its selected target, not each remote candidate.
+    v4.attackTarget = anchor
     local character = localPlayer.Character
+    local generation = v4.inputGeneration
     local startedAt = os.clock()
-    local sent = 0
-
+    local sent, available = 0, 0
     local function canContinue()
         return localPlayer.Character == character
+            and v4.inputGeneration == generation
             and farmActive()
             and not refillBlocksCombat()
             and not v4.skillCasting
-            and os.clock() - startedAt < CombatConfig.MaxBurstSeconds
-            and CombatManager.CanAttack(target, maxDistance)
+            and os.clock() - startedAt < CombatConfig.MaxSweepSeconds
     end
-
     local ok, err = pcall(function()
-        for _ = 1, CombatConfig.AttemptsPerBurst do
+        local candidates = CombatManager.NearbyTargets(anchor)
+        available = #candidates
+        diagDetail = "Nearby targets found: " .. available
+        diagShow("Nearby sweep")
+        for _, candidate in ipairs(candidates) do
+            if not canContinue() then break end
             while os.clock() < nextHitAt do
                 if not canContinue() then return end
                 task.wait(math.max(0, math.min(0.03, nextHitAt - os.clock())))
             end
-
-            if not canContinue() then return end
-
-            -- Preserve the existing registration arguments.
-            -- A returned call does not prove damage was accepted.
-            diagHit(
-                "Hitboxes",
-                "Register",
-                target,
-                math.random(215, 230),
-                math.random(10, 100)
-            )
-            sent = sent + 1
-
-            -- Space requests after the response; never queue catch-up hits.
-            nextHitAt = os.clock() + attackInterval()
+            if not canContinue() then break end
+            if CombatManager.CanAttack(candidate.target, candidate.range) then
+                -- One request per distinct Titan per sweep.
+                diagHit("Hitboxes", "Register", candidate.target,
+                    math.random(215, 230), math.random(10, 100))
+                sent = sent + 1
+                nextHitAt = os.clock() + attackInterval()
+            end
         end
     end)
-
-    burstRunning = false
+    sweepRunning = false
     v4.attackTarget = nil
-
     diagDetail = string.format(
-        "Burst requests: %d/%d; accepted hits unverified",
-        sent,
-        CombatConfig.AttemptsPerBurst
-    )
-    diagShow(ok and "Burst finished" or "Burst failed")
-
-    if not ok then
-        error(err, 0)
-    end
+        "Nearby targets tried: %d/%d (damage unverified)", sent, available)
+    diagShow(ok and "Nearby sweep finished" or "Nearby sweep failed")
+    if not ok then error(err, 0) end
 end
 local function v136() -- One attack worker, independent of frame rate.
     if v4.combatWorkerRunning then return end
