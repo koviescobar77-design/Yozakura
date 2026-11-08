@@ -1,34 +1,29 @@
-# OP multi-hit timing trial
+# Combat restore and optional Multi Hit
 
-The previous OP proximity, routing, skill, and performance changes were reverted after the user reported a regression. Movement, target switching, skills, refill, menu, and settings match the version at script commit 44bb3c1ef35f2950e22f12e43392fb01a1a75847.
+The user's original uploaded attack worker, movement, target selection, skill-input implementation, and independent M1 input loop have been restored. The later full-refill check is retained.
 
-## Current change
+## Defaults on every new load
 
-Only the OP hit-registration path uses the new timing trial. One script-generated M1 is followed by up to five distinct Titan registration requests. Each request starts without waiting for the preceding server reply. There is one request per Humanoid, no extra M1 per target, and no automatic duplicate retry.
+- **Multi Hit: OFF.** Ordinary combat uses the original single-target registration burst and independent M1 loop.
+- **Auto Skill: OFF.** Skill inputs are not sent unless the user explicitly enables Auto Skill again.
+- Multi Hit and Auto Skill are not restored to ON by Auto Config.
 
-A new batch cannot overlap an unresolved one. Requests that exceed the two-second response wait keep the batch locked until their replies return; the worker reports the timeout instead of resending. The in-flight counter includes all outstanding calls.
+The Mission panel has a separate **Multi Hit** toggle. Enabling it selects the experimental path only while OP Farm is enabled. Disabling it returns to the original combat path once any outstanding multi-hit replies have returned.
 
-The WIP M1 body retains its previous behavior. A pending OP batch must finish before a mode handoff can issue another attack.
+## Optional Multi Hit behavior
 
-No hit range, movement offset, target-switch policy, skill input method, or refill behavior was changed by this trial.
+One M1 input is followed by up to five distinct Titan registration requests. Requests start without waiting for each previous reply. The payload ranges match the original uploaded attack worker. There are no cosmetic floating damage numbers.
 
-## What passed locally
+One request is allowed per Humanoid in the batch. Batches do not overlap. Unresolved calls are not automatically repeated.
 
-- Full-script syntax compilation.
-- Cooperative coroutine tests showing five distinct requests begin before the first response, after one M1 input.
-- Duplicate-target prevention, different response latencies, balanced in-flight tracking, errors, timeout locking, no repeated unresolved requests, cancellation, and mode handoff.
-- HP report test: five replies with only one observed health decrease still report HP drops 1/5.
-- Source comparisons confirming the pre-regression movement/targeting, skills, refill, menu, settings, and legacy WIP M1 code were restored/preserved.
+If the experimental path errors or its replies time out, Multi Hit turns OFF automatically. Ordinary combat resumes after outstanding replies return. No other farm mode is switched to Multi Hit.
 
-These tests use fake Roblox objects. They do not establish five accepted damage hits or faster mission completion in the live game.
+The previous standalone five-target test overlays/buttons were removed; this control is integrated into the Mission panel.
 
-## In-game test
+## Verification and limits
 
-1. Rejoin to stop older scripts, then use the pinned loader supplied in chat.
-2. Enable OP Farm. Compare movement and skill behavior with the version before the reverted optimization.
-3. Near five living Titans, press **Test 1 M1 / 5 Titans**. Avoid manual attacks during its observation window.
-4. Record the persistent result: **ONE M1 | requests .../5 | HP drops .../5**, along with each target's before/after HP and the actual fight.
-5. Five replies are not five hits. HP decreases are observed replicated values and can include other players' damage. Disappearance alone is never counted as damage.
-6. If requests are 5/5 but HP drops remain 1/5, this timing trial has not demonstrated working five-target damage. Server validation and live combat behavior remain unresolved.
+Passed locally: complete-script syntax compilation, restored-code comparisons, ordinary OFF behavior, opt-in OP dispatch, changing modes during an attack, fallback after errors, timeout draining without duplicate calls, and WIP isolation.
 
-For speed comparisons, use the same mission, difficulty, loadout, and party conditions and compare completed mission result times. No live speedup or five-target M1 success has been verified.
+These are mocked tests with fake Roblox objects. Actual five-target damage is still unverified. Enabling the toggle enables the experimental code path; it is not a guarantee that the game's server accepts five damage hits.
+
+Rejoin before using the updated loader so older script workers stop. First verify ordinary combat with Multi Hit OFF and Auto Skill OFF. Then enable only Multi Hit and compare actual Titan HP loss and kills. Request counts or floating numbers alone do not establish damage.
