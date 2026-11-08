@@ -1245,6 +1245,27 @@ v3.setMultiHit(false)
 v3.multiHitButton.Activated:Connect(function()
     v3.setMultiHit(not v3.multiHitEnabled)
 end)
+-- Maximum distinct targets per M1; this is not a guaranteed damage count.
+v3.multiHitTargets = 10
+v3.multiTargetFrame = v3["1d"]:Clone()
+v3.multiTargetFrame.Name = "multiTargetCount"
+v3.multiTargetFrame.Parent = v3["4"]
+local multiTargetLabel = v3.multiTargetFrame:FindFirstChild("multiLabel")
+multiTargetLabel.Text = "Max targets"
+v3.multiTargetBox = multiTargetLabel:FindFirstChild("multi")
+v3.multiTargetBox.Text = tostring(v3.multiHitTargets)
+v3.multiTargetBox.ClearTextOnFocus = false
+v3.multiTargetBox.PlaceholderText = "3–10"
+v3.multiTargetBox.FocusLost:Connect(function()
+    local count = tonumber(v3.multiTargetBox.Text)
+    if not count or count ~= count or count == math.huge or count == -math.huge then
+        count = v3.multiHitTargets
+    end
+    count = math.clamp(math.floor(count), 3, 10)
+    v3.multiHitTargets = count
+    v3.multiTargetBox.Text = tostring(count)
+    if v3.onMultiHitTargetsChanged then v3.onMultiHitTargetsChanged(count) end
+end)
 -- Unified Mission page: the existing controls retain their original callbacks.
 v3["4"].Visible = true
 v3["4"].Size = UDim2.new(0.79, 0, 0.83, 0)
@@ -1257,7 +1278,7 @@ do
         {v3["23"], v3["37"]},
         {v3["29"], v3["30"]},
         {v3["48"], v3.autoSkillFrame},
-        {v3.multiHitFrame},
+        {v3.multiHitFrame, v3.multiTargetFrame},
     }
     for rowIndex, columns in ipairs(rows) do
         for columnIndex, control in ipairs(columns) do
@@ -1451,6 +1472,11 @@ local v4 = {
 
 v4.multiHitEnabled = v3.multiHitEnabled == true
 v4.multiHitGeneration = 0
+v4.multiHitTargets = v3.multiHitTargets
+v3.onMultiHitTargetsChanged = function(count)
+    v4.multiHitTargets = count
+    if v4.multiHitEnabled then v4.multiHitGeneration = v4.multiHitGeneration + 1 end
+end
 v3.onMultiHitChanged = function(enabled)
     v4.multiHitEnabled = enabled == true
     v4.multiHitGeneration = v4.multiHitGeneration + 1
@@ -2708,7 +2734,12 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
                     v4.steadyFacing = flat.Magnitude > 0.01 and flat.Unit or Vector3.new(0, 0, -1)
                     v4.steadyFacingTarget = v4.nape
                 end
+                if v4.autofarmEnabled and v4.multiHitEnabled
+                    and (v4.nape.Position - v4.root.Position).Magnitude > 0.01 then
+                    l_BG_0.CFrame = CFrame.lookAt(v4.root.Position, v4.nape.Position)
+                else
                 l_BG_0.CFrame = CFrame.lookAt(v4.root.Position, v4.root.Position + v4.steadyFacing)
+                end
             end;
             for _, v133 in pairs(v4.character:GetDescendants()) do
                 if v133:IsA("BasePart") and v133.CanCollide == true then
@@ -2760,7 +2791,7 @@ local CombatConfig = {
     AttackInterval = 0.4,
     OPAttackInterval = 0.4,
     AttemptsPerBurst = 10,
-    MaxTargetsPerSweep = 5,
+    MaxTargetsPerSweep = 10,
     MaxSweepSeconds = 0.35,
     RegularRange = 175,
     BossRange = 250,
@@ -2797,6 +2828,56 @@ function CombatManager.CanAttack(target, maxDistance)
     v4.root = root
     return true
 end
+function CombatManager.TargetLimit()
+    local count = tonumber(v4.multiHitTargets) or CombatConfig.MaxTargetsPerSweep
+    if count ~= count or count == math.huge or count == -math.huge then
+        count = CombatConfig.MaxTargetsPerSweep
+    end
+    return math.clamp(math.floor(count), 3, 10)
+end
+
+function CombatManager.WeakPoint(titan)
+    if not titan then return nil end
+    if titan.Name ~= "Attack_Titan" then
+        return findPath(titan, {"Hitboxes", "Hit", "Nape"})
+    end
+    local marker = titan:FindFirstChild("Marker")
+    if not marker or not (marker:IsA("Highlight") or marker:IsA("BillboardGui")
+        or marker:IsA("SurfaceGui")) or marker.Enabled == false then return nil end
+    local marked = marker.Adornee
+    if marked and marked:IsA("Attachment") then marked = marked.Parent end
+    if not marked or not marked:IsA("BasePart") or not marked:IsDescendantOf(titan) then return nil end
+    local supported = {Nape = true, LeftLeg = true, RightLeg = true,
+        LeftArm = true, RightArm = true, Eyes = true}
+    if not supported[marked.Name] then return nil end
+    -- Accept only the actual known hitbox, not a similarly named body mesh.
+    if findPath(titan, {"Hitboxes", "Hit", marked.Name}) ~= marked then return nil end
+    return marked
+end
+
+function CombatManager.RefreshWeakPoint(candidate)
+    if not CombatManager.MultiHitActive() then return candidate.target end
+    local titan = candidate.titan
+    if not titan then
+        local _, owner = CombatManager.TargetHumanoid(candidate.target)
+        titan = owner
+    end
+    candidate.target = CombatManager.WeakPoint(titan)
+    return candidate.target
+end
+
+function CombatManager.AimAtWeakPoint(target)
+    if not CombatManager.MultiHitActive() or not target then return end
+    local character = localPlayer.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root or (target.Position - root.Position).Magnitude < 0.01 then return end
+    -- Rotate at the existing position; do not change flight height or destination.
+    local facing = CFrame.lookAt(root.Position, target.Position)
+    local gyro = root:FindFirstChild("BG")
+    if gyro and gyro:IsA("BodyGyro") then gyro.CFrame = facing end
+    root.CFrame = facing
+end
+
 function CombatManager.NearbyTargets(anchor)
     local candidates = {}
     if not v4.titans then return candidates end
@@ -2817,8 +2898,12 @@ function CombatManager.NearbyTargets(anchor)
                     target = marked
                 end
             end
+            if CombatManager.MultiHitActive() then
+                target = CombatManager.WeakPoint(titan)
+            end
             if CombatManager.CanAttack(target, range) then
                 candidates[#candidates + 1] = {
+                    titan = titan,
                     target = target,
                     range = range,
                     distance = (v4.root.Position - target.Position).Magnitude,
@@ -2831,7 +2916,8 @@ function CombatManager.NearbyTargets(anchor)
         if b.target == anchor then return false end
         return a.distance < b.distance
     end)
-    while #candidates > CombatConfig.MaxTargetsPerSweep do
+    local limit = CombatManager.MultiHitActive() and CombatManager.TargetLimit() or 5
+    while #candidates > limit do
         table.remove(candidates)
     end
     return candidates
@@ -2865,9 +2951,11 @@ do
         local batch = {pending = 0, items = {}, timedOut = false}
         self.activeBatch = batch
         local seen = {}
+        local limit = CombatManager.TargetLimit()
         for _, candidate in ipairs(candidates) do
-            if #batch.items >= 5 or not valid()
+            if #batch.items >= limit or not valid()
                 or os.clock() - startedAt >= CombatConfig.MaxSweepSeconds then break end
+            CombatManager.RefreshWeakPoint(candidate)
             local humanoid = CombatManager.TargetHumanoid(candidate.target)
             if humanoid and not seen[humanoid]
                 and CombatManager.CanAttack(candidate.target, candidate.range) then
@@ -2879,7 +2967,15 @@ do
                 -- InvokeServer yields inside each worker. Launch the next distinct
                 -- target without waiting for this one's response. No extra M1.
                 task.spawn(function()
-                    local ok, result = pcall(CombatManager.RegisterTarget, candidate.target)
+                    local ok, result = pcall(function()
+                        local current = CombatManager.RefreshWeakPoint(candidate)
+                        if not current or not valid()
+                            or not CombatManager.CanAttack(current, candidate.range) then
+                            candidate.requested = false
+                            return nil
+                        end
+                        return CombatManager.RegisterTarget(current)
+                    end)
                     candidate.returned = true
                     candidate.callOK = ok
                     candidate.reply = tostring(result):sub(1, 28)
@@ -2900,10 +2996,12 @@ do
             error("M1 replies still pending; batch remains locked until all return.", 0)
         end
         self.activeBatch = nil
+        local sent = {}
         for _, candidate in ipairs(batch.items) do
             if not candidate.callOK then error("Hit registration failed: " .. candidate.reply, 0) end
+            if candidate.requested then sent[#sent + 1] = candidate end
         end
-        return batch.items
+        return sent
     end
 
     function multi:Run(anchor)
@@ -2934,6 +3032,7 @@ do
             -- A dead or distant old anchor must not block a valid nearby target.
             local primary = candidates[1].target
             v4.nape, v4.attackTarget = primary, primary
+            CombatManager.AimAtWeakPoint(primary)
             clicked = v4.performM1() == true
             if not clicked then
                 diagDetail = "M1 blocked; no target requests sent."
