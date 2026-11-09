@@ -5,8 +5,11 @@ if not game:IsLoaded() then game.Loaded:Wait() end
 local env=type(getgenv)=="function" and getgenv() or _G
 local previous=env.YozakuraRouterR1
 if previous then
-    warn("[Yozakura] Router already running. Rejoin to load another revision.")
-    return
+    if type(previous.Stop)=="function" then
+        previous.Stop()
+    else
+        error("Rejoin once to replace the older router, then run the loader again.")
+    end
 end
 local pg=game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui",30)
 assert(pg,"PlayerGui unavailable")
@@ -24,7 +27,8 @@ local function visible(o)
     if not o or not o:IsA("GuiObject") or not o:IsDescendantOf(pg) then return false end
     local node=o
     while node and node~=pg do
-        if node.Name=="YozakuraLobby" or node.Name=="YozakuraRouterStatus" or node.Name=="tekkit" or node.Name=="Open" then return false end
+        if node:IsA("ScreenGui") and (node.Name=="YozakuraLobby" or node.Name=="YozakuraRouterStatus"
+            or node.Name=="YozakuraLoaderStatus" or node.Name=="tekkit" or node.Name=="Open") then return false end
         if node:IsA("GuiObject") and not node.Visible then return false end
         if node:IsA("ScreenGui") and not node.Enabled then return false end
         node=node.Parent
@@ -32,14 +36,44 @@ local function visible(o)
     return o.AbsoluteSize.X>0 and o.AbsoluteSize.Y>0
 end
 local ctx
+local modeDetail="Waiting for game UI"
 local cachedMode,modeAt="unknown",-math.huge
+local function bladeCounter(o)
+    if not o or not (o:IsA("TextLabel") or o:IsA("TextButton") or o:IsA("TextBox"))
+        or o.Name:lower()~="sets" then return false end
+    local count,maximum=o.Text:match("^%s*(%d+)%s*/%s*(%d+)%s*$")
+    if not count or tonumber(maximum)<1 or tonumber(count)>tonumber(maximum) then return false end
+    local parent=o.Parent
+    for _=1,4 do
+        if not parent or parent==pg then break end
+        if parent.Name:lower():find("blade",1,true) then return true end
+        parent=parent.Parent
+    end
+    return false
+end
+local function combatScene(titans)
+    local character=game:GetService("Players").LocalPlayer.Character
+    local root=character and character:FindFirstChild("HumanoidRootPart")
+    if not root or not root:IsA("BasePart") then return false end
+    for _,titan in ipairs(titans:GetChildren()) do
+        local humanoid=titan:IsA("Model") and titan:FindFirstChildOfClass("Humanoid")
+        if humanoid and humanoid.Health>0 then
+            local boxes=titan:FindFirstChild("Hitboxes")
+            local hit=boxes and boxes:FindFirstChild("Hit")
+            local nape=hit and hit:FindFirstChild("Nape")
+            if nape and nape:IsA("BasePart") then return true end
+        end
+    end
+    return false
+end
 local function mode()
-    if ctx and ctx.teleporting then return "transition" end
+    if ctx and ctx.teleporting then modeDetail="Teleporting"; return "transition" end
     if os.clock()-modeAt<0.15 then return cachedMode end
-    local tabs,menu={},false
+    local tabs,menu,bladeVisible={},false,false
     local names={["gear up"]=true,quests=true,equipment=true,inventory=true,market=true,
         rankings=true,regiment=true,battlepass=true}
     for _,o in ipairs(pg:GetDescendants()) do
+        if bladeCounter(o) and visible(o) then bladeVisible=true end
         if (o:IsA("TextLabel") or o:IsA("TextButton")) and visible(o) then
             local value=R.clean(o.Text)
             if names[value] then tabs[value]=true end
@@ -51,11 +85,19 @@ local function mode()
     local interface=pg:FindFirstChild("Interface")
     local hud=interface and interface:FindFirstChild("HUD")
     local main=hud and hud:FindFirstChild("Main")
-    local top=main and main:FindFirstChild("Top")
-    local blade=top and top:FindFirstChild("Blade")
-    local sets=blade and blade:FindFirstChild("Sets")
-    local mission=workspace:FindFirstChild("Titans")~=nil and sets~=nil and visible(sets)
+    local titans=workspace:FindFirstChild("Titans")
+    local lobby=count>=4
+    -- A hidden counter is not sufficient evidence that an active Titan battle ended.
+    -- This fallback requires the mission HUD, a player root and a living Titan weakness.
+    local battle=not bladeVisible and not lobby and not menu and titans and main and combatScene(titans)
+    local mission=titans~=nil and (bladeVisible or battle==true)
     cachedMode=R.mode({lobby=count>=4,mission=mission,menu=menu})
+    if cachedMode=="mission" then modeDetail="Mission detected"
+    elseif cachedMode=="lobby" then modeDetail="Lobby detected"
+    elseif cachedMode=="menu" then modeDetail="Open the lobby or enter a mission"
+    elseif cachedMode=="transition" then modeDetail="Waiting for the lobby/mission screen to settle"
+    elseif titans then modeDetail="Titans found; waiting for mission HUD or active battle"
+    else modeDetail="Waiting for lobby or mission UI" end
     modeAt=os.clock()
     return cachedMode
 end
@@ -63,12 +105,19 @@ ctx={mode=mode,visible=visible,alive=true,entry=ENTRY,teleporting=false}
 local reported
 local function say(value)
     if value~=reported then print("[Yozakura Router] "..value); reported=value end
+    local statusGui=pg:FindFirstChild("YozakuraLoaderStatus")
+    local label=statusGui and statusGui:FindFirstChild("Status")
+    if label then
+        label.Text="Yozakura · "..value
+        statusGui.Enabled=value~="Mission script active" and value~="Lobby script active"
+    end
 end
 local newController=fetch("AOTR_router_state.lua")()
 local controller=newController({
     mode=mode, clock=os.clock, spawn=task.spawn, cancel=task.cancel,
     currentThread=coroutine.running, context=ctx, report=say,
     load=function(kind,session)
+        say(kind=="mission" and "Loading mission UI..." or "Loading lobby UI...")
         local function module(name)
             assert(session.isCurrent(), "Mode changed before download")
             local chunk=fetch(name)
@@ -98,9 +147,23 @@ local teleportConnection=game:GetService("Players").LocalPlayer.OnTeleport:Conne
         queued=pcall(queue, 'loadstring(game:HttpGet("'..ENTRY..'"))()')
     elseif state==Enum.TeleportState.Failed then queued=false end
 end)
+function ctx.Stop()
+    if not ctx.alive then return end
+    ctx.alive=false
+    controller:Stop()
+    teleportConnection:Disconnect()
+    if env.YozakuraRouterR1==ctx then env.YozakuraRouterR1=nil end
+end
 task.spawn(function()
     while ctx.alive do
-        controller:Tick()
+        local ok,err=pcall(function() controller:Tick() end)
+        if not ok then
+            say("Router error: "..tostring(err))
+            ctx.Stop()
+            return
+        end
+        if not controller.slot and (controller.observed=="unknown" or controller.observed=="menu"
+            or controller.observed=="transition") then say(modeDetail) end
         task.wait(0.15)
     end
     controller:Stop()
