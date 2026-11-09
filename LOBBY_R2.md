@@ -56,3 +56,13 @@ Run tests with Python and lupa:
     python tests/test_launch.py
 
 Rejoin before loading R2. Select the setup, then press PLAY SELECTED SETUP. If the hub reports an unreadable control, open the relevant game panel and press Scan UI to capture its instance paths and attributes.
+
+## Mission UI startup update
+
+Mission detection now supports visible Blade/Sets counters outside the original exact HUD path. A hidden counter can still identify a mission when the mission HUD, player root and a living Titan's nape are present; lobby or slot-menu evidence blocks this fallback. A Titans folder alone is insufficient.
+
+The loader displays download progress, waiting state and startup errors on screen. The status hides after the selected module initializes. New managed routers can be replaced by running the loader again. Rejoin once when upgrading from the older router, which has no managed Stop method.
+
+The current main and lobby-r1 loader.lua entry points use the same router. The gameplay modules, including Multi Hit, remain unchanged in this startup repair.
+
+Run `python tests/test_router_detection.py` for alternate HUD layouts, hidden-counter detection, mode conflicts, full loader-to-mission startup using a mocked mission module, visible status and managed rerun checks. These tests pass offline; the user's live HUD and executor still require verification.
