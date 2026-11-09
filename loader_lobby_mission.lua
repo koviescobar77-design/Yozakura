@@ -1,5 +1,5 @@
--- Yozakura Lobby/Mission R1. Modules are pinned together at publication.
-local ROOT = "https://raw.githubusercontent.com/koviescobar77-design/Yozakura/b14db68a9f5fa4562066c6aa49bf7260e7a99e04/"
+-- Yozakura Lobby/Mission R2. Modules are pinned together at publication.
+local ROOT = "https://raw.githubusercontent.com/koviescobar77-design/Yozakura/9614a6f3fe289880537a5358b04ff274d17bec55/"
 local ENTRY = "https://raw.githubusercontent.com/koviescobar77-design/Yozakura/lobby-r1/loader_lobby_mission.lua"
 if not game:IsLoaded() then game.Loaded:Wait() end
 local env=type(getgenv)=="function" and getgenv() or _G
@@ -57,7 +57,7 @@ local function mode()
     modeAt=os.clock()
     return cachedMode
 end
-local ctx={mode=mode,visible=visible,alive=true,missionStarted=false,entry=ENTRY}
+local ctx={mode=mode,visible=visible,alive=true,missionStarted=false,entry=ENTRY,teleporting=false}
 env.YozakuraRouterR1=ctx
 local lobby,lastMode,stableSince,reported=nil,nil,os.clock(),nil
 local function say(value)
@@ -67,6 +67,8 @@ end
 local queue=queue_on_teleport or queueonteleport or (syn and syn.queue_on_teleport)
 local queued=false
 game:GetService("Players").LocalPlayer.OnTeleport:Connect(function(state)
+    if state==Enum.TeleportState.Started then ctx.teleporting=true end
+    if state==Enum.TeleportState.Failed then ctx.teleporting=false end
     if state==Enum.TeleportState.Started and not queued and type(queue)=="function" then
         queued=pcall(queue, 'loadstring(game:HttpGet("'..ENTRY..'"))()')
     elseif state==Enum.TeleportState.Failed then queued=false end
@@ -97,7 +99,7 @@ task.spawn(function()
                 local ok,result=pcall(function()
                     local chunk=fetch("AOTR_lobby.lua")
                     if mode()~="lobby" then error("Lobby changed during download") end
-                    return chunk(ctx,R)
+                    return chunk(ctx,R,fetch("AOTR_launch.lua")())
                 end)
                 if ok then lobby=result; say("Lobby loaded")
                 else say("Lobby load failed: "..tostring(result)); task.wait(5) end
@@ -111,4 +113,4 @@ task.spawn(function()
         task.wait(0.5)
     end
 end)
-print("[Yozakura] R1 router active. Re-run the loader after teleport if your environment has no teleport queue.")
+print("[Yozakura] R2 router active. Re-run the loader after teleport if your environment has no teleport queue.")
