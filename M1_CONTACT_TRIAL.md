@@ -1,3 +1,9 @@
+# Contact trial retired from the current loader
+
+Both current loader entry points now load the restored combat baseline with Multi Hit ON and Auto Skill OFF. Rejoin and use the new loader supplied in chat. The contact-trial source and notes below are historical; they are not the current loader behavior.
+
+---
+
 # Contact trial with the user-supplied replacement module
 
 The supplied pasted text replaced only the native-M1 contact trial module inside AOTR_m1_contact_trial.lua. Its incomplete trailing dispatcher comment was excluded; the existing full dispatcher and the rest of the trial script were preserved. The trial loader is pinned to the updated script commit.
