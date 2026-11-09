@@ -1,6 +1,7 @@
--- Yozakura Lobby R1. UI adapter: no invented game remote names or payloads.
+-- Yozakura Lobby R2: mission setup, modifiers and countdown.
 -- Called by loader_lobby_mission.lua with the shared context and rules.
-local ctx, R = ...
+local ctx, R, Launch = ...
+assert(Launch, "R2 requires the updated loader")
 assert(ctx and R and ctx.mode() == "lobby", "Yozakura Lobby requires confirmed Gear Up lobby")
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
@@ -8,13 +9,16 @@ local Http = game:GetService("HttpService")
 local pg = Players.LocalPlayer:WaitForChild("PlayerGui")
 local alive, active, epoch = true, false, 0
 local connections, blocked, spent = {}, {}, {}
+local playRequested,launchBusy,launchMachine,runButton=false,false,nil,nil
 local config = {
     jobs = {}, odm = {}, perksUpgrade = {}, perksEquip = {}, boosters = {},
     branch = "Offense", plans = {
         Offense = "Drill Thrust > Offense Capstone", Defense = "", Support = ""
     },
     currencies = {Gems=true}, rarities = {Legendary=true, Mythic=true},
-    budgets = {Gems=0, Pumpkins=0, Shards=0}, spins = false, resume = false
+    budgets = {Gems=0, Pumpkins=0, Shards=0}, spins = false, resume = false,
+    play={mode="Missions",map="Shiganshina",boss="Attack Titan",difficulty="Easy",
+        grade="E-",objective="Default",delay=5,modifiers={},customModifier="",auto=false}
 }
 local file = "YozakuraLobby_R1.json"
 if type(readfile) == "function" then
@@ -24,6 +28,12 @@ if type(readfile) == "function" then
             if type(saved[key]) == type(default) then config[key] = saved[key] end
         end
     end
+end
+-- Merge new launch fields when loading a saved R1 / partially populated R2 config.
+local playDefaults={mode="Missions",map="Shiganshina",boss="Attack Titan",difficulty="Easy",
+    grade="E-",objective="Default",delay=5,modifiers={},customModifier="",auto=false}
+for key,value in pairs(playDefaults) do
+    if type(config.play[key])~=type(value) then config.play[key]=value end
 end
 -- Budgets are per session; purchasing always requires a fresh toggle after loading.
 config.jobs.market = false
@@ -96,7 +106,7 @@ local function note(p, value, height)
     l.TextWrapped=true; l.TextSize=15
     return l
 end
-local function toggle(p, label, map, key)
+local function toggle(p, label, map, key, changed)
     local b
     local function paint()
         b.Text = label .. (map[key] and "    ON" or "    OFF")
@@ -104,6 +114,7 @@ local function toggle(p, label, map, key)
     end
     b = button(p, "", nil, nil, function()
         map[key] = not map[key]; epoch=epoch+1; paint()
+        if changed then changed(map[key]) end
     end)
     paint(); return b
 end
@@ -116,6 +127,95 @@ local function entry(p, label, initial, callback)
     connect(e.FocusLost,function() callback(e.Text); epoch=epoch+1 end)
     return e
 end
+local play=page("Play")
+local choiceRefresh={}
+local function refreshChoices()
+    for _,fn in ipairs(choiceRefresh) do fn() end
+end
+local function choices(p,label,values,key,onChange)
+    local heading=note(p,label,23)
+    local rows,buttons={},{}
+    for i,name in ipairs(values) do
+        local col=(i-1)%3
+        if col==0 then
+            rows[#rows+1]=make("Frame",p,{Size=UDim2.new(1,0,0,33),BackgroundTransparency=1})
+        end
+        local b=button(rows[#rows],name,UDim2.new(col/3,3,0,0),UDim2.new(1/3,-6,0,31),function()
+            config.play[key]=name; epoch=epoch+1
+            if onChange then onChange(name) end
+            refreshChoices()
+        end)
+        b.TextSize=15;buttons[name]=b
+    end
+    local function paint()
+        for name,b in pairs(buttons) do
+            b.BackgroundColor3=config.play[key]==name and Color3.fromRGB(20,115,39) or Color3.fromRGB(37,35,38)
+        end
+    end
+    choiceRefresh[#choiceRefresh+1]=paint;paint()
+    return {heading=heading,rows=rows,buttons=buttons}
+end
+local playAction=button(play,"PLAY SELECTED SETUP",nil,UDim2.new(1,0,0,40),function()
+    if launchBusy then report("Launch in progress · Cancel first"); return end
+    playRequested=true;active=true;epoch=epoch+1
+    if runButton then runButton.Text="Pause" end
+    report("Preparing selected mission setup")
+end)
+playAction.BackgroundColor3=Color3.fromRGB(25,105,47)
+button(play,"Cancel launch / countdown",nil,nil,function()
+    active=false;playRequested=false;epoch=epoch+1
+    if runButton then runButton.Text="Run tasks" end
+    report("Launch / countdown cancelled")
+end)
+toggle(play,"Auto Play on lobby load",config.play,"auto",function(enabled)
+    active=enabled
+    if runButton then runButton.Text=enabled and "Pause" or "Run tasks" end
+    report(enabled and "Auto Play enabled · Save Setup to resume on lobby load" or "Auto Play stopped")
+end)
+entry(play,"Seconds before Start (0–3600)",config.play.delay,function(value)
+    local delay=Launch.seconds(value)
+    if delay then config.play.delay=delay else report("Invalid delay; previous value retained") end
+end)
+choices(play,"Mode",Launch.modes,"mode",function() config.play.objective="Default" end)
+local mapChoices=choices(play,"Mission map",Launch.maps,"map",function()config.play.objective="Default"end)
+local bossChoices=choices(play,"Raid boss",Launch.bosses,"boss")
+local objectiveChoices=choices(play,"Objective",{"Default","Skirmish","Protect","Defend","Random"},"objective")
+choiceRefresh[#choiceRefresh+1]=function()
+    local isMission=config.play.mode=="Missions"
+    mapChoices.heading.Visible=isMission
+    for _,row in ipairs(mapChoices.rows)do row.Visible=isMission end
+    bossChoices.heading.Visible=config.play.mode=="Raids"
+    for _,row in ipairs(bossChoices.rows)do row.Visible=config.play.mode=="Raids" end
+    objectiveChoices.heading.Visible=isMission
+    for _,row in ipairs(objectiveChoices.rows)do row.Visible=isMission end
+    local available=Launch.objectives[config.play.map] or {"Default"}
+    for name,b in pairs(objectiveChoices.buttons)do b.Visible=table.find(available,name)~=nil end
+end
+note(play,"Difficulty / grade presets",24)
+local difficultyBox,gradeBox
+for _,preset in ipairs(Launch.presets) do
+    button(play,preset.name.." ("..preset.grade..")",nil,nil,function()
+        config.play.difficulty=preset.name;config.play.grade=preset.grade;epoch=epoch+1
+        difficultyBox.Text=preset.name;gradeBox.Text=preset.grade
+    end)
+end
+difficultyBox=entry(play,"Difficulty name (or enter another offered difficulty)",config.play.difficulty,function(value)
+    config.play.difficulty=value:match("^%s*(.-)%s*$")
+end)
+gradeBox=entry(play,"Grade (blank = accept the grade for that difficulty)",config.play.grade,function(value)
+    config.play.grade=value:match("^%s*(.-)%s*$"):upper()
+end)
+note(play,"The game's < > selector is read until both selected labels match. Locked / unavailable choices stop setup.",50)
+note(play,"Additional modifiers",24)
+for _,name in ipairs(Launch.modifiers)do toggle(play,name,config.play.modifiers,name)end
+entry(play,"Additional modifier (exact game label, optional)",config.play.customModifier,function(value)
+    value=value:match("^%s*(.-)%s*$")
+    if config.play.customModifier~="" then config.play.modifiers[config.play.customModifier]=nil end
+    config.play.customModifier=value
+    if value~="" then config.play.modifiers[value]=true end
+end)
+note(play,"No Skills is the +3% modifier in the video. Default objective keeps the game's default. Select the unidentified reward boost toggle manually.",65)
+refreshChoices()
 local claims=page("Claims")
 toggle(claims,"Auto Claim Quests",config.jobs,"quests")
 toggle(claims,"Auto Claim Battlepass",config.jobs,"battlepass")
@@ -185,18 +285,17 @@ local function save()
     report(ok and "Setup saved · market still requires manual enabling on each load" or tostring(err))
 end
 button(settings,"Save Setup",nil,nil,save)
-note(settings,"UI adapter R1 · live AOTR compatibility still needs testing. Use Scan UI while the relevant game panel is open.",56)
-local order={"Claims","ODM","Skills","Perks","Boosters","Market","Setup"}
+note(settings,"UI adapter R2 · live AOTR compatibility still needs testing. Use Scan UI while the relevant game panel is open.",56)
+local order={"Play","Claims","ODM","Skills","Perks","Boosters","Market","Setup"}
 for i,name in ipairs(order) do
-    button(panel,name,UDim2.fromOffset(12,50+(i-1)*39),UDim2.fromOffset(120,32),function()
+    button(panel,name,UDim2.fromOffset(12,50+(i-1)*34),UDim2.fromOffset(120,29),function()
         for key,p in pairs(pages) do p.Visible=key==name end
     end)
 end
-claims.Visible=true
-local runButton
-runButton=button(panel,"Start",UDim2.fromOffset(12,335),UDim2.fromOffset(120,34),function()
+play.Visible=true
+runButton=button(panel,"Run tasks",UDim2.fromOffset(12,335),UDim2.fromOffset(120,34),function()
     active=not active; epoch=epoch+1
-    runButton.Text=active and "Pause" or "Start"
+    runButton.Text=active and "Pause" or "Run tasks"
     report(active and "Running selected lobby tasks" or "Paused")
 end)
 button(panel,"Save Setup",UDim2.fromOffset(12,378),UDim2.fromOffset(120,34),save)
@@ -606,14 +705,206 @@ jobs.market=function(token)
     end
     return false,"No eligible readable offer · budgets / stock / currency checked"
 end
+-- R2 launch adapter. Scope actions to their current modal, not the background Play/Start.
+local function enclosing(object,predicate)
+    local p=object and object.Parent
+    for _=1,10 do
+        if not p or p==pg or p:IsA("ScreenGui") then return nil end
+        if p:IsA("GuiObject") and predicate(p) then return p end
+        p=p.Parent
+    end
+end
+local function partyPanel()
+    for _,item in ipairs(labels(pg))do
+        if item.value:match("^players%s*:") then
+            local p=enclosing(item.object,function(node)
+                return uniqueButton(node,{"Leave"}) and uniqueButton(node,{"Modifiers"}) and uniqueButton(node,{"Start"})
+            end)
+            if p then return p end
+        end
+    end
+end
+local function modifierPanel()
+    for _,heading in ipairs(exact(pg,{"Modifiers"}))do
+        if not target(heading) then
+            local p=enclosing(heading,function(node)
+                return uniqueButton(node,{"Back"}) and #exact(node,{"No Skills","No Memories","Nightmare","Oddball"})>0
+            end)
+            if p then return p end
+        end
+    end
+end
+local function setupPanel()
+    for _,item in ipairs(labels(pg))do
+        if Launch.readDifficulty(item.object.Text) then
+            local p=enclosing(item.object,function(node)
+                return uniqueButton(node,{"Back"})~=nil
+            end)
+            if p then return p end
+        end
+    end
+end
+local function objectivePanel()
+    for _,item in ipairs(exact(pg,{"Skirmish","Protect","Defend","Random"}))do
+        local p=enclosing(item,function(node)
+            return uniqueButton(node,{"Back"}) and #exact(node,{"Skirmish"})>0 and #exact(node,{"Random"})>0
+        end)
+        if p then return p end
+    end
+end
+local function stage()
+    if modifierPanel() then return "modifiers" end
+    if objectivePanel() then return "objectives" end
+    if partyPanel() then return "party" end
+    if setupPanel() then return "setup" end
+    if uniqueButton(pg,{"Missions"}) and uniqueButton(pg,{"Raids"}) and uniqueButton(pg,{"Waves"}) then return "modes" end
+    if uniqueButton(pg,{"Play"}) then return "lobby" end
+    return "other"
+end
+local function waitUI(predicate,token,seconds)
+    local deadline=os.clock()+(seconds or 4)
+    repeat
+        if not valid(token) then return false,"Cancelled" end
+        if predicate() then return true end
+        if not pause(0.1,token) then return false,"Cancelled" end
+    until os.clock()>=deadline
+    return false,"Selection not confirmed"
+end
+local function chooseNamed(name,token,root)
+    root=root or pg
+    local b,err=uniqueButton(root,{name})
+    if not b then return false,err end
+    local card=b
+    if #exact(card,{"Locked"})>0 or b:GetAttribute("Locked")==true then return false,"Locked: "..name end
+    for _,o in ipairs(card:GetDescendants()) do
+        if (R.clean(o.Name)=="lock" or R.clean(o.Name)=="locked") and o:IsA("GuiObject") and visible(o) then return false,"Locked: "..name end
+    end
+    if not click(b,token) then return false,"Cannot click "..name end
+    return true
+end
+local function selectedContent(name)
+    local p=setupPanel()
+    if not p then return false end
+    -- In the video the selected map / raid is the modal's title, separate from its clickable tile.
+    for _,o in ipairs(exact(p,{name}))do if not target(o) then return true end end
+    return false
+end
+local function readDifficulty()
+    local p=setupPanel()
+    if not p then return nil end
+    local resultName,resultGrade
+    for _,item in ipairs(labels(p))do
+        local name,grade=Launch.readDifficulty(item.object.Text)
+        if name then
+            if resultName and (name~=resultName or grade~=resultGrade) then return nil end
+            resultName,resultGrade=name,grade
+        end
+    end
+    return resultName,resultGrade
+end
+local function modifierRow(name)
+    local root=modifierPanel()
+    if not root then return nil,nil,"missing" end
+    local matches=exact(root,{name})
+    if #matches==0 then return nil,nil,"missing" end
+    if #matches~=1 then return nil,nil,"ambiguous" end
+    local p=matches[1].Parent
+    for _=1,6 do
+        if not p or p==root then break end
+        local other=0
+        for _,known in ipairs(Launch.modifiers) do if #exact(p,{known})>0 then other=other+1 end end
+        if other>1 then break end
+        local buttons={}
+        if p:IsA("GuiButton") then buttons[#buttons+1]=p end
+        for _,o in ipairs(p:GetDescendants())do if o:IsA("GuiButton") and visible(o) then buttons[#buttons+1]=o end end
+        if #buttons==1 then return p,buttons[1] end
+        p=p.Parent
+    end
+    return nil,nil,"unreadable"
+end
+local function modifierState(name)
+    local row,b,reason=modifierRow(name)
+    if not row then return nil,reason end
+    local values={}
+    local function take(value) if type(value)=="boolean" then values[value]=true end end
+    for _,object in ipairs({row,b})do
+        for _,key in ipairs({"Selected","Checked","Toggled"})do take(object:GetAttribute(key)) end
+    end
+    for _,o in ipairs(row:GetDescendants())do
+        local n=R.clean(o.Name)
+        if (n=="selected" or n=="checked" or n=="enabled") and o:IsA("BoolValue") then take(o.Value) end
+        if (n=="checkmark" or n=="tick" or n=="check") and o:IsA("GuiObject") then
+            local shown=o.Visible
+            if o:IsA("ImageLabel") or o:IsA("ImageButton") then shown=shown and o.Image~="" and o.ImageTransparency<1 end
+            take(shown)
+        end
+    end
+    for _,item in ipairs(labels(row))do
+        if item.value=="on" or item.value=="selected" then take(true) end
+        if item.value=="off" or item.value=="unselected" then take(false) end
+    end
+    if values[true] and values[false] then return nil,"conflicting" end
+    if values[true] then return true end
+    if values[false] then return false end
+    return nil,"unreadable"
+end
+local function launchPress(name,token)
+    local root,names=pg,{name}
+    if name=="Next difficulty" then root=setupPanel();names={">","›","→"}
+    elseif name=="Previous difficulty" then root=setupPanel();names={"<","‹","←"}
+    elseif name=="Close modifiers" then root=modifierPanel();names={"Back"}
+    elseif name=="Create" or name=="Objectives" then root=setupPanel()
+    elseif name=="Start" or name=="Modifiers" then root=partyPanel() end
+    if not root then return false,"Panel missing for "..name end
+    local b,err=uniqueButton(root,names)
+    if not b then return false,err end
+    return click(b,token), "Input unavailable: "..name
+end
+launchMachine=Launch.new({
+    now=os.clock,valid=valid,wait=pause,status=report,stage=stage,
+    press=launchPress,difficulty=readDifficulty,
+    selectContent=function(name,token)
+        if selectedContent(name) then return true end
+        local ok,err=chooseNamed(name,token)
+        if not ok then return false,err end
+        return waitUI(function()return selectedContent(name)end,token)
+    end,
+    objectivesOpen=function()return objectivePanel()~=nil end,
+    selectObjective=function(name,token)
+        local root=objectivePanel()
+        if not root then return false,"Objectives panel missing" end
+        local ok,err=chooseNamed(name,token,root)
+        if not ok then return false,err end
+        return waitUI(function()return setupPanel()~=nil end,token)
+    end,
+    modifier=modifierState,
+    toggleModifier=function(name,token)
+        local _,b=modifierRow(name)
+        if not b then return false,"Modifier button unreadable: "..name end
+        return click(b,token),"Modifier input unavailable: "..name
+    end,
+    partyFingerprint=function()
+        local p=partyPanel()
+        if not p then return nil end
+        return p:GetFullName().."|"..words(p)
+    end,
+    mission=function()return ctx.mode()=="mission"end,
+    teleporting=function()return ctx.teleporting==true end
+})
 local function scan()
-    active=false; epoch=epoch+1; runButton.Text="Start"
+    active=false;playRequested=false; epoch=epoch+1; runButton.Text="Run tasks"
     local data={version=1,placeId=game.PlaceId,mode=ctx.mode(),objects={}}
     for _,o in ipairs(pg:GetDescendants()) do
         if visible(o) then
             local record={path=o:GetFullName(),class=o.ClassName}
             if o:IsA("TextLabel") or o:IsA("TextButton") or o:IsA("TextBox") then record.text=o.Text end
             if o:IsA("GuiButton") then record.active=o.Active end
+            record.attributes={}
+            for key,value in pairs(o:GetAttributes())do
+                local kind=type(value)
+                record.attributes[key]=(kind=="boolean" or kind=="number" or kind=="string") and value or tostring(value)
+            end
+            record.name=o.Name
             if record.text or o:IsA("GuiButton") then data.objects[#data.objects+1]=record end
         end
     end
@@ -627,14 +918,22 @@ end
 button(settings,"Scan current game UI",nil,nil,scan)
 button(settings,"Reset Holds (after checking game result)",nil,nil,function()
     if active then report("Pause before resetting holds"); return end
-    blocked={}; report("Holds cleared · spending counters retained")
+    blocked={};launchMachine.held=false; report("Holds cleared · spending counters retained")
 end)
 button(panel,"Scan UI",UDim2.fromOffset(12,427),UDim2.fromOffset(120,32),scan)
 local jobOrder={"quests","battlepass","achievements","odm","skills","perksUpgrade","perksEquip","boosters","market"}
-if config.resume then active=true; runButton.Text="Pause" end
+if config.resume or config.play.auto then active=true; runButton.Text="Pause" end
 local worker=task.spawn(function()
     while alive do
-        for _,name in ipairs(jobOrder) do
+        if active and (playRequested or config.play.auto) then
+            launchBusy=true
+            local token=epoch
+            local ok,done,message=pcall(function()return launchMachine:Run(config.play,token)end)
+            launchBusy=false;playRequested=false
+            active=false;epoch=epoch+1;runButton.Text="Run tasks"
+            report(ok and (message or "Launch finished") or ("Launch paused: "..tostring(done)))
+        else
+          for _,name in ipairs(jobOrder) do
             if not alive then return end
             if ctx.mode()~="lobby" then active=false; epoch=epoch+1; runButton.Text="Start" end
             if active and config.jobs[name] then
@@ -645,6 +944,7 @@ local worker=task.spawn(function()
                 else report(message or name) end
                 if not pause(name=="market" and 5 or 1,token) then break end
             end
+          end
         end
         task.wait(0.5)
     end

@@ -56,7 +56,8 @@ source = source.replace("return {Stop=stop,Gui=gui}", """return {
     Stop=stop,Gui=gui,Transaction=transaction,Unique=uniqueButton,
     Begin=function() active=true; return epoch end
 }""")
-lua.globals().hub = lua.execute(source, lua.globals().ctx, lua.globals().R)
+lua.globals().Launch = lua.execute((root / "AOTR_launch.lua").read_text(encoding="utf-8"))
+lua.globals().hub = lua.execute(source, lua.globals().ctx, lua.globals().R, lua.globals().Launch)
 lua.execute("""
 assert(hub.Gui.Name=="YozakuraLobby")
 local panel=hub.Gui:GetChildren()[1]
