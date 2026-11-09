@@ -9,6 +9,7 @@ local Http = game:GetService("HttpService")
 local pg = Players.LocalPlayer:WaitForChild("PlayerGui")
 local alive, active, epoch = true, false, 0
 local connections, blocked, spent = {}, {}, {}
+local worker
 local playRequested,launchBusy,launchMachine,runButton=false,false,nil,nil
 local config = {
     jobs = {}, odm = {}, perksUpgrade = {}, perksEquip = {}, boosters = {},
@@ -46,6 +47,14 @@ gui.ResetOnSpawn = false
 gui.DisplayOrder = 10000
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent = pg
+local function stop()
+    if not alive then return end
+    active=false; alive=false; epoch=epoch+1
+    for _,c in ipairs(connections) do c:Disconnect() end
+    gui:Destroy()
+    if worker and worker ~= coroutine.running() then pcall(task.cancel,worker) end
+end
+ctx.stopLobby=stop
 local function make(class, parent, props)
     local o = Instance.new(class)
     for k,v in pairs(props or {}) do o[k] = v end
@@ -302,12 +311,6 @@ button(panel,"Save Setup",UDim2.fromOffset(12,378),UDim2.fromOffset(120,34),save
 local reopen=button(gui,"Yozakura Lobby",UDim2.fromOffset(12,80),UDim2.fromOffset(145,35),function() panel.Visible=true end)
 reopen.Visible=false
 button(panel,"Hide",UDim2.fromOffset(458,9),UDim2.fromOffset(76,30),function() panel.Visible=false; reopen.Visible=true end)
-local function stop()
-    if not alive then return end
-    active=false; alive=false; epoch=epoch+1
-    for _,c in ipairs(connections) do c:Disconnect() end
-    gui:Destroy()
-end
 button(panel,"Close",UDim2.fromOffset(544,9),UDim2.fromOffset(90,30),stop)
 -- Dragging the title does not consume clicks on the controls.
 local dragging, origin, position
@@ -923,7 +926,7 @@ end)
 button(panel,"Scan UI",UDim2.fromOffset(12,427),UDim2.fromOffset(120,32),scan)
 local jobOrder={"quests","battlepass","achievements","odm","skills","perksUpgrade","perksEquip","boosters","market"}
 if config.resume or config.play.auto then active=true; runButton.Text="Pause" end
-local worker=task.spawn(function()
+worker=task.spawn(function()
     while alive do
         if active and (playRequested or config.play.auto) then
             launchBusy=true
