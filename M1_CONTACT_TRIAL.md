@@ -1,39 +1,30 @@
-# Isolated native M1 contact trial
+# Contact trial with the user-supplied replacement module
 
-This trial is in AOTR_m1_contact_trial.lua and loader_m1_contact_trial.lua. The normal AOTR_maintenance.lua and loader.lua remain the rollback version. It is a test of actual contact and native M1 input, not a verified copy of a VIP autofarm.
+The supplied pasted text replaced only the native-M1 contact trial module inside AOTR_m1_contact_trial.lua. Its incomplete trailing dispatcher comment was excluded; the existing full dispatcher and the rest of the trial script were preserved. The trial loader is pinned to the updated script commit.
 
-## OP behavior in this trial
+## Supplied behavior
 
-- Approach the current known weak point before attacking. The OP destination is two studs above and four studs behind it, rather than the rollback's much larger hover offset.
-- Limit approach speed to 180 locally. Use the original proportional velocity control and nocollision behavior.
-- Keep gyro facing level. Do not force root CFrame rotation or invent an animation.
-- Require the player to be within a local nine-stud contact gate before M1 input.
-- One OP worker owns M1. It presses the game's normal mouse input for 50 milliseconds, releases it, and enforces the existing 0.4-second interval. The independent OP autoclick and original ten-request burst are bypassed in this trial.
-- Use an enabled, known boss marker hitbox, refreshing it when choosing a target. Regular Titans use their Nape hitbox. Missing active boss markers are not replaced by a guessed nape.
-- Release the target after observed zero HP, or try another living target after two seconds of contact attempts without observed HP progress.
+- Primary contact stays at nine studs, with height two and rear offset four.
+- Secondary selection expands from 14 to 175 studs.
+- After a native M1, the primary target is explicitly registered even with Multi Hit OFF.
+- With Multi Hit ON, up to ten distinct eligible Titans are registered from the first contact input; the previous observed-HP gate is removed.
+- The dispatcher window starts after the native input helper returns.
+- Errors are reported as warnings without automatically turning Multi Hit OFF. Existing pending-batch locks still prevent repeated unresolved requests.
+- Auto Skill still defaults to OFF.
+- The normal rollback script and loader remain separate.
 
-Flight height/contact positioning is intentionally different in this test. It still needs live collision, grab, boss-phase, animation, and hit verification.
+## Limits
 
-## Multi Hit and HP feedback
+The panel wording "175 stud splash" comes from the supplied module. It describes a local target-selection radius, not a verified server-side splash mechanic. Native M1 may already register a hit, so an additional primary registration is not proof of an additional accepted damage hit.
 
-Start with Multi Hit OFF and Auto Skill OFF. The initial OP path sends native M1 input only, without direct scripted Hitboxes/Register calls.
+Observed HP loss and zero-HP events are distinct from input and request counts. Multiplayer damage or the existing automatic escape behavior can affect observed HP.
 
-The panel shows distance, native M1 inputs, observed HP loss, and observed zero-HP events. HP changes after an attempted input are observations; in multiplayer, other players or existing automatic escape behavior can contribute. They are not conclusive attribution to our M1.
+Despite the heading "fixed for Multi-Hit & Multi-Instance", the supplied block does not add a global singleton guard against multiple copies running in the same client. Its busy flags coordinate workers within one script instance.
 
-If Multi Hit is enabled, extra registration requests remain blocked until an HP decrease has been observed after a contact input. Then at most ten distinct nearby weak points within a local 14-stud proximity check are attempted after the same M1. There is no guarantee that enough targets are close together or that the server accepts these extra requests.
+## Local verification
 
-No floating damage numbers are created. Target disappearance alone is not counted as a death.
+The combined script compiles. Mocked tests passed for close primary contact, primary registration while OFF, first-input Multi Hit, inclusive 175-stud selection, exclusion beyond 175, ten distinct concurrent targets after one native input, HP accounting without fabricated damage, blocked input, fresh dispatch timing, warning-only errors, pending-response locks, death release, and WIP guards. The actual virtual-input helper's press/release and cleanup checks also passed.
 
-## What passed locally
+These tests do not establish live hit acceptance, 175-stud splash damage, a speedup, or same-client multi-instance safety.
 
-Full-script syntax checks and mocked tests passed for a reachable contact destination, no far-away native input, one M1 worker and interval, actual input press/release and failure release, focused/covered UI guards, observed HP feedback, gated nearby extra requests, stalled-target selection, death release, and WIP guards.
-
-Roblox was not run here. Live accepted damage, parity with the VIP reference, simultaneous damage to 5–10 Titans, and improved mission times remain unverified.
-
-## Run and record
-
-Rejoin first, then use the pinned trial loader from chat. Enable OP Farm. Leave Auto Skill OFF. First leave Multi Hit OFF and record the panel plus the target's health while approaching and attacking.
-
-Once actual HP decreases are visible, try Multi Hit ON near a group and compare actual health changes. Do not infer success from input counters, registration replies, or floating effects.
-
-Auto Config's queued loader uses the separate contact-trial loader in this file. The normal loader still loads the rollback version.
+Rejoin before running the updated trial loader. Show the distance/HP panel and actual Titan health when testing. The normal loader still uses the rollback script.
