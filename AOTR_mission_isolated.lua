@@ -4,7 +4,8 @@ assert(lobbySession and lobbySession.mode() == "mission", "Mission-only script: 
 
 -- Track every worker and event subscription created by this isolated copy.
 local baseTask, baseCoroutine = task, coroutine
-local life = {active=true, threads=setmetatable({}, {__mode="k"}), connections={}}
+local life = {active=true, threads=setmetatable({}, {__mode="k"}), connections={}, guis={}, keys={}}
+local missionCancelled = {}
 local function canRun()
     return life.active and lobbySession.mode()=="mission"
 end
@@ -14,7 +15,7 @@ local function tracked(fn, ...)
     life.threads[thread]=true
     local ok,err=pcall(fn,...)
     life.threads[thread]=nil
-    if not ok and life.active then warn("[Yozakura Mission] "..tostring(err)) end
+    if not ok and err ~= missionCancelled and canRun() then warn("[Yozakura Mission] "..tostring(err)) end
 end
 local function lobbyConnect(signal,fn)
     local c=signal:Connect(function(...) return tracked(fn,...) end)
@@ -22,6 +23,12 @@ local function lobbyConnect(signal,fn)
     return c
 end
 local task=setmetatable({
+    wait=function(...)
+        if not canRun() then error(missionCancelled,0) end
+        local elapsed=baseTask.wait(...)
+        if not canRun() then error(missionCancelled,0) end
+        return elapsed
+    end,
     spawn=function(fn,...) local t=baseTask.spawn(tracked,fn,...); life.threads[t]=true; return t end,
     defer=function(fn,...) local t=baseTask.defer(tracked,fn,...); life.threads[t]=true; return t end,
     delay=function(seconds,fn,...) local t=baseTask.delay(seconds,tracked,fn,...); life.threads[t]=true; return t end,
@@ -39,9 +46,22 @@ local coroutine=setmetatable({
     end,
 }, {__index=baseCoroutine})
 local mainThread=baseCoroutine.running()
+local function missionKey(input,key,down)
+    if down and not canRun() then return false end
+    if down then life.keys[key]=true end
+    input:SendKeyEvent(down,key,false,game)
+    if not down then life.keys[key]=nil end
+    return true
+end
 local function stopLifecycle()
+    if not life.active then return end
     life.active=false
     for _,connection in ipairs(life.connections) do connection:Disconnect() end
+    for gui in pairs(life.guis) do pcall(function() gui:Destroy() end) end
+    for key in pairs(life.keys) do
+        pcall(function() game:GetService("VirtualInputManager"):SendKeyEvent(false,key,false,game) end)
+    end
+    life.keys={}
     for thread in pairs(life.threads) do
         if thread~=baseCoroutine.running() then pcall(baseTask.cancel,thread) end
     end
@@ -117,6 +137,7 @@ assert(lobbySession.mode() == "mission", "Mission changed during startup")
 local v3 = {
     ["1"] = Instance.new("ScreenGui", game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui", 15))
 };
+life.guis[v3["1"]]=true
 v3["1"].DisplayOrder = 999;
 v3["1"].Name = "tekkit";
 v3["1"].ResetOnSpawn = false;
@@ -743,6 +764,7 @@ v3["74"].BackgroundTransparency = 1;
 v3["74"].Name = "star";
 v3["74"].Position = UDim2.new(-0.01639, 0, 0.18919, 0);
 v3["100"] = Instance.new("ScreenGui", game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui"));
+life.guis[v3["100"]]=true
 v3["100"].Name = "Open";
 v3["100"].ResetOnSpawn = false;
 v3["100"].Enabled = false;
@@ -1133,12 +1155,12 @@ local function requestRefill(manual)
                 local held = false
                 local pressed, pressError = pcall(function()
                     held = true
-                    input:SendKeyEvent(true, Enum.KeyCode.R, false, game)
+                    missionKey(input, Enum.KeyCode.R, true)
                     task.wait(math.max(0.2, (station.prompt and station.prompt.HoldDuration or 0) + 0.05))
-                    input:SendKeyEvent(false, Enum.KeyCode.R, false, game)
+                    missionKey(input, Enum.KeyCode.R, false)
                     held = false
                 end)
-                if held then pcall(function() input:SendKeyEvent(false, Enum.KeyCode.R, false, game) end) end
+                if held then pcall(missionKey,input,Enum.KeyCode.R,false) end
                 if not pressed then error(pressError, 0) end
             end
             local deadline = os.clock() + 20
@@ -2217,7 +2239,7 @@ end);
 -- Auto Skill is controlled independently from the Testing tab.
 local startFarmWorkers
 local function farmActive()
-    return v4.oldfarmEnabled or v4.autofarmEnabled
+    return canRun() and (v4.oldfarmEnabled or v4.autofarmEnabled)
 end
 local function v108()
     if v4.autofarmEnabled and startFarmWorkers then startFarmWorkers() end
@@ -2800,6 +2822,7 @@ lobbyConnect(v3["4a"].Activated, function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     end;
 end);
 local function clickOnce()
+    if not canRun() then return false end
     if v4.skillCasting then return false end
     if os.clock() < (v4.nextNativeM1 or 0) then return false end
     local input = game:GetService("UserInputService")
@@ -2827,6 +2850,7 @@ local autoSkillButton = v3.autoSkillButton
 local skillToggleGeneration = 0
 local skillLastAttempt = {}
 local function inputAllowed()
+    if not canRun() then return false end
     local character = localPlayer.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     return v3["1"].Parent and humanoid and humanoid.Health > 0
@@ -2974,9 +2998,9 @@ local function clickSkill(slot)
         if v4.autoSkillEnabled and generation == skillToggleGeneration and inputAllowed() and skillReady(slot) then
             local number = tonumber(slot.Name:match("(%d+)$"))
             heldKey = number == 1 and Enum.KeyCode.One or Enum.KeyCode.Two
-            v4.VIM:SendKeyEvent(true, heldKey, false, game)
+            missionKey(v4.VIM, heldKey, true)
             task.wait(0.1)
-            v4.VIM:SendKeyEvent(false, heldKey, false, game)
+            missionKey(v4.VIM, heldKey, false)
             heldKey = nil
         end
         task.wait(0.15)
@@ -2987,7 +3011,7 @@ local function clickSkill(slot)
             reportSkillStatus("Input sent, but no cooldown appeared. Skill activation is unconfirmed.")
         end
     end)
-    if heldKey then pcall(function() v4.VIM:SendKeyEvent(false, heldKey, false, game) end) end
+    if heldKey then pcall(missionKey,v4.VIM,heldKey,false) end
     if mouseHeld and point then
         pcall(function() v4.VIM:SendMouseButtonEvent(point.X, point.Y, 0, false, game, 0) end)
     end
