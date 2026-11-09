@@ -2854,14 +2854,23 @@ function CombatManager.RegisterTarget(target)
     return diagHit("Hitboxes", "Register", target, math.random(215, 230), math.random(10, 100))
 end
 
--- Isolated OP native-M1 contact trial; the normal loader does not use this file.
+-- Isolated OP native-M1 contact trial; fixed for Multi-Hit & Multi-Instance
 do
     local trial = {
-        ContactRange = 9, SecondaryRange = 14, Height = 2, Rear = 4,
-        TravelSpeed = 180, Interval = 0.4, nextM1 = 0,
-        observers = {}, swings = 0, observedLoss = 0, deaths = 0, nativeHPSeen = false,
+        ContactRange = 9,            -- Keep original close-contact distance so real M1 connects
+        SecondaryRange = 175,        -- Reach surrounding Titans on the same M1 window
+        Height = 2,                  -- Keep original Height = 2 (15 was too high to hit!)
+        Rear = 4,                    -- Keep original Rear = 4 offset behind Nape
+        TravelSpeed = 180,
+        Interval = 0.4,
+        nextM1 = 0,
+        observers = {},
+        swings = 0,
+        observedLoss = 0,
+        deaths = 0,
     }
     v4.nativeM1Trial = trial
+
     local label = Instance.new("TextLabel")
     label.Name = "NativeM1ContactReport"
     label.Size = UDim2.fromOffset(360, 110)
@@ -2877,12 +2886,17 @@ do
 
     function trial:Report(stage, distance)
         if label.Parent then
-            label.Text = string.format("OP native M1 contact trial\n%s | distance %s\n"
+            label.Text = string.format(
+                "OP native M1 contact trial\n%s | distance %s\n"
                 .. "M1 inputs %d | observed HP loss %.0f | zero-HP %d\n"
-                .. "Extra multi requests: %s",
-                stage, distance and string.format("%.1f", distance) or "?",
-                self.swings, self.observedLoss, self.deaths,
-                self.nativeHPSeen and "allowed only for nearby weak points" or "waiting for observed HP loss after input")
+                .. "Multi Hit: %s",
+                stage,
+                distance and string.format("%.1f", distance) or "?",
+                self.swings,
+                self.observedLoss,
+                self.deaths,
+                v4.multiHitEnabled and "ON (175 stud splash)" or "OFF (single target)"
+            )
         end
     end
 
@@ -2911,8 +2925,6 @@ do
                 if v4.autofarmEnabled and entry.firstInput and health < entry.health then
                     self.observedLoss = self.observedLoss + entry.health - health
                     entry.lastDrop = os.clock()
-                    -- An observation, not proof of damage attribution in multiplayer.
-                    if not self.nativeHPSeen then self.nativeHPSeen = true end
                 end
                 if v4.autofarmEnabled and entry.firstInput and health <= 0 and not entry.dead then
                     entry.dead = true
@@ -2963,94 +2975,112 @@ do
         for _, titan in ipairs(v4.titans:GetChildren()) do
             local humanoid = titan:IsA("Model") and titan:FindFirstChildOfClass("Humanoid")
             local point = humanoid and humanoid.Health > 0 and self:WeakPoint(titan)
-            if point and point:IsA("BasePart") and (root.Position - point.Position).Magnitude <= self.SecondaryRange then
-                candidates[#candidates + 1] = {titan=titan, target=point, range=self.SecondaryRange,
-                    distance=(root.Position - point.Position).Magnitude}
+            if point and point:IsA("BasePart") then
+                local d = (root.Position - point.Position).Magnitude
+                if d <= self.SecondaryRange then
+                    candidates[#candidates + 1] = {
+                        titan = titan,
+                        target = point,
+                        range = self.SecondaryRange,
+                        distance = d
+                    }
+                end
             end
         end
-        table.sort(candidates, function(a,b)
-            if a.target==anchor then return b.target~=anchor end
-            if b.target==anchor then return false end
-            return a.distance<b.distance
+        table.sort(candidates, function(a, b)
+            if a.target == anchor then return b.target ~= anchor end
+            if b.target == anchor then return false end
+            return a.distance < b.distance
         end)
-        while #candidates>10 do table.remove(candidates) end
+        while #candidates > 10 do table.remove(candidates) end
         return candidates
     end
 
     function trial:Attempt(target)
         if not v4.autofarmEnabled or v4.skillCasting or v4.m1GroupInFlight
-            or v4.opMultiHit:Pending() or type(v4.performM1)~="function" then return end
+            or v4.opMultiHit:Pending() or type(v4.performM1) ~= "function" then return end
         local character = localPlayer.Character
         local root = character and character:FindFirstChild("HumanoidRootPart")
         local ownHumanoid = character and character:FindFirstChildOfClass("Humanoid")
-        if not root or not ownHumanoid or ownHumanoid.Health<=0 then return end
+        if not root or not ownHumanoid or ownHumanoid.Health <= 0 then return end
         local humanoid, model = CombatManager.TargetHumanoid(target)
-        local actual = humanoid and humanoid.Health>0 and self:WeakPoint(model)
+        local actual = humanoid and humanoid.Health > 0 and self:WeakPoint(model)
         if not actual then self:Report("No active weak point"); return end
         target = actual
         v4.nape = target
-        local distance = (root.Position-target.Position).Magnitude
-        self:Report(distance>self.ContactRange and "Approaching before M1" or "Contact",distance)
-        if distance>self.ContactRange or os.clock()<self.nextM1 then return end
+        local distance = (root.Position - target.Position).Magnitude
+        self:Report(distance > self.ContactRange and "Approaching before M1" or "Contact", distance)
+        if distance > self.ContactRange or os.clock() < self.nextM1 then return end
+
         local generation, modeGeneration = v4.inputGeneration, v4.multiHitGeneration
         local function valid()
-            return v4.autofarmEnabled and localPlayer.Character==character
-                and v4.inputGeneration==generation and v4.multiHitGeneration==modeGeneration
+            return v4.autofarmEnabled and localPlayer.Character == character
+                and v4.inputGeneration == generation and v4.multiHitGeneration == modeGeneration
                 and not v4.skillCasting and not refillBlocksCombat()
                 and not v4.refillPending and not v4.UIP:GetFocusedTextBox()
         end
         if not valid() then return end
+
         local entry = self:Watch(target)
-        local allowExtra = v4.multiHitEnabled and self.nativeHPSeen
-        local clicked = false
         v4.m1GroupInFlight = true
         v4.attackTarget = target
-        local ok,err = pcall(function()
+
+        local ok, err = pcall(function()
             local started = os.clock()
-            local previousInput=entry.firstInput
+            local previousInput = entry.firstInput
             entry.firstInput = entry.firstInput or started
-            clicked = v4.performM1()==true
+
+            -- Perform the native M1 click (just like your original working code)
+            local clicked = v4.performM1() == true
             if not clicked then
-                entry.firstInput=previousInput
-                self:Report("M1 input blocked",distance)
+                entry.firstInput = previousInput
+                self:Report("M1 input blocked", distance)
                 return
             end
-            self.swings = self.swings+1
-            self.nextM1 = started+self.Interval
-            if allowExtra and valid() then
-                local candidates=self:Contacts(target)
-                for _, candidate in ipairs(candidates) do
-                    local watched=self:Watch(candidate.target)
-                    if watched then watched.firstInput=watched.firstInput or started end
+
+            self.swings = self.swings + 1
+            self.nextM1 = started + self.Interval
+
+            -- Always register the primary contact target + nearby targets if Multi Hit is ON
+            if valid() then
+                local candidates
+                if v4.multiHitEnabled then
+                    candidates = self:Contacts(target)
+                else
+                    candidates = {{titan = model, target = target, range = self.ContactRange, distance = distance}}
                 end
-                v4.opMultiHit:Dispatch(candidates,valid,started)
+                for _, candidate in ipairs(candidates) do
+                    local watched = self:Watch(candidate.target)
+                    if watched then watched.firstInput = watched.firstInput or started end
+                end
+                -- Pass os.clock() AFTER performM1() finishes so the 0.35s sweep timer is fresh
+                v4.opMultiHit:Dispatch(candidates, valid, os.clock())
             end
-            self:Report("One native M1 sent; observing HP",distance)
+            self:Report("One native M1 sent; observing HP", distance)
         end)
-        if not v4.opMultiHit:Pending() then v4.m1GroupInFlight=false end
-        v4.attackTarget=nil
+
+        if not v4.opMultiHit:Pending() then v4.m1GroupInFlight = false end
+        v4.attackTarget = nil
         if not ok then
-            v3.setMultiHit(false)
-            self:Report("Multi Hit disabled: "..tostring(err),distance)
+            self:Report("Batch warning: " .. tostring(err):sub(1, 28), distance)
             warn(tostring(err))
         end
     end
 
     task.spawn(function()
-        local wasOP=false
+        local wasOP = false
         while v3["1"].Parent do
             if wasOP and not v4.autofarmEnabled then
-                for _,entry in pairs(trial.observers) do entry.connection:Disconnect() end
-                trial.observers={}
-                trial.nativeHPSeen=false
+                for _, entry in pairs(trial.observers) do entry.connection:Disconnect() end
+                trial.observers = {}
             end
-            for humanoid,entry in pairs(trial.observers) do
-                if not humanoid.Parent then entry.connection:Disconnect(); trial.observers[humanoid]=nil end
+            for humanoid, entry in pairs(trial.observers) do
+                if not humanoid.Parent then entry.connection:Disconnect(); trial.observers[humanoid] = nil end
             end
-            wasOP=v4.autofarmEnabled
+            wasOP = v4.autofarmEnabled
             task.wait(0.1)
         end
-        for _,entry in pairs(trial.observers) do entry.connection:Disconnect() end
+        for _, entry in pairs(trial.observers) do entry.connection:Disconnect() end
     end)
     trial:Report("Enable OP Farm; Auto Skill stays OFF")
 end
