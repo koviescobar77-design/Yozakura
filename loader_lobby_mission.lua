@@ -1,5 +1,5 @@
 -- Yozakura Lobby/Mission R2. Modules are pinned together at publication.
-local ROOT = "https://raw.githubusercontent.com/koviescobar77-design/Yozakura/9614a6f3fe289880537a5358b04ff274d17bec55/"
+local ROOT = "https://raw.githubusercontent.com/koviescobar77-design/Yozakura/1f2e4aa6473d201f9b89fb3902f200c5aee38b51/"
 local ENTRY = "https://raw.githubusercontent.com/koviescobar77-design/Yozakura/lobby-r1/loader_lobby_mission.lua"
 if not game:IsLoaded() then game.Loaded:Wait() end
 local env=type(getgenv)=="function" and getgenv() or _G
