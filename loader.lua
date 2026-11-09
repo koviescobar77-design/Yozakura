@@ -5,19 +5,37 @@ local playerGui = player:WaitForChild("PlayerGui", 15)
 assert(playerGui, "PlayerGui did not load")
 local old = playerGui:FindFirstChild("YozakuraLoaderStatus")
 if old then old:Destroy() end
+local statusGui = Instance.new("ScreenGui")
+statusGui.Name = "YozakuraLoaderStatus"
+statusGui.ResetOnSpawn = false
+statusGui.DisplayOrder = 10001
+statusGui.Parent = playerGui
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Name = "Status"
+statusLabel.Size = UDim2.new(0.8, 0, 0, 64)
+statusLabel.Position = UDim2.new(0.1, 0, 1, -100)
+statusLabel.BackgroundColor3 = Color3.fromRGB(24, 24, 28)
+statusLabel.BackgroundTransparency = 0.15
+statusLabel.TextColor3 = Color3.new(1, 1, 1)
+statusLabel.Font = Enum.Font.SourceSansBold
+statusLabel.TextSize = 18
+statusLabel.TextWrapped = true
+statusLabel.Parent = statusGui
 local function report(message)
     print("[Yozakura] " .. tostring(message))
+    statusLabel.Text = "Yozakura · " .. tostring(message)
+    statusGui.Enabled = true
 end
 report("Downloading script...")
 local ok, err = xpcall(function()
     assert(type(loadstring) == "function", "This environment does not provide loadstring")
-    local source = game:HttpGet("https://raw.githubusercontent.com/koviescobar77-design/Yozakura/053433c7b022978eb3b6fbd1db487c077ec3c5b7/AOTR_maintenance.lua")
+    local source = game:HttpGet("https://raw.githubusercontent.com/koviescobar77-design/Yozakura/da4423a9819b4239904d2730db1b7331fa1c6694/loader_lobby_mission.lua")
     assert(type(source) == "string" and #source > 0, "Empty download")
-    local chunk, compileError = loadstring(source, "@Yozakura/AOTR_maintenance.lua")
+    local chunk, compileError = loadstring(source, "@Yozakura/loader_lobby_mission.lua")
     assert(chunk, compileError)
-    report("Starting script. Mission objects must be available; startup can take several minutes.")
+    report("Starting Lobby R2 / Mission router. Waiting for a recognized game screen.")
     chunk()
-    report("Initialization finished. Game features are not verified.")
+    report("Waiting for lobby or mission UI...")
 end, function(message)
     return tostring(message)
 end)
