@@ -789,7 +789,7 @@ v3.multiHitEnabled = true
 v3.multiHitFrame = v3["48"]:Clone()
 v3.multiHitFrame.Name = "multiHit"
 v3.multiHitFrame.Parent = v3["4"]
-v3.multiHitFrame:FindFirstChild("autoLabel").Text = "Multi Hit"
+v3.multiHitFrame:FindFirstChild("autoLabel").Text = "Multi Hit (up to 10)"
 v3.multiHitButton = v3.multiHitFrame:FindFirstChild("autoLabel"):FindFirstChild("autoToggle")
 v3.setMultiHit = function(enabled)
     v3.multiHitEnabled = enabled == true
@@ -2440,7 +2440,7 @@ local CombatConfig = {
     AttackInterval = 0.4,
     OPAttackInterval = 0.4,
     AttemptsPerBurst = 10,
-    MaxTargetsPerSweep = 5,
+    MaxTargetsPerSweep = 10,
     MaxSweepSeconds = 0.35,
     RegularRange = 175,
     BossRange = 250,
@@ -2478,21 +2478,14 @@ function CombatManager.NearbyTargets(anchor)
     if not v4.titans then return candidates end
     for _, titan in ipairs(v4.titans:GetChildren()) do
         if titan:IsA("Model") then
-            local target = findPath(titan, {"Hitboxes", "Hit", "Nape"})
+            local target = v4.wipTargeting.WeakPoint(titan)
             local range = CombatConfig.RegularRange
             if titan.Name == "Attack_Titan" then
                 range = CombatConfig.BossRange
-                local marker = titan:FindFirstChild("Marker")
-                local marked = marker
-                    and (marker:IsA("BillboardGui") or marker:IsA("Highlight"))
-                    and marker.Adornee
-                -- Use the boss's marked weak point when one is available.
-                if marked and marked:IsA("BasePart") and marked:IsDescendantOf(titan) then
-                    target = marked
-                end
             end
             if CombatManager.CanAttack(target, range) then
                 candidates[#candidates + 1] = {
+                    titan = titan,
                     target = target,
                     range = range,
                     distance = (v4.root.Position - target.Position).Magnitude,
@@ -2520,12 +2513,28 @@ function CombatManager.TargetHumanoid(target)
     end
 end
 
+function CombatManager.RefreshCandidate(candidate)
+    local titan = candidate.titan
+    if not titan then
+        local _, owner = CombatManager.TargetHumanoid(candidate.target)
+        titan = owner
+    end
+    if not titan then return end
+    local target = v4.wipTargeting.WeakPoint(titan)
+    local range = titan.Name == "Attack_Titan" and CombatConfig.BossRange or CombatConfig.RegularRange
+    if not CombatManager.CanAttack(target, range) then return end
+    local humanoid = CombatManager.TargetHumanoid(target)
+    if not humanoid then return end
+    candidate.titan, candidate.target, candidate.range = titan, target, range
+    return humanoid
+end
+
 function CombatManager.RegisterTarget(target)
     -- Preserve the payload ranges from the user's original attack worker.
     return diagHit("Hitboxes", "Register", target, math.random(215, 230), math.random(10, 100))
 end
 
--- OP-only single-M1 dispatch. At most one request per distinct Titan.
+-- Shared WIP/OP single-M1 dispatch. At most one request per distinct Titan.
 do
     local multi = {running = false, nextM1 = 0}
     v4.opMultiHit = multi
@@ -2534,26 +2543,35 @@ do
         return self.activeBatch and self.activeBatch.pending > 0
     end
 
+    function multi:OwnsInput()
+        return self.running or self:Pending() or (farmActive() and v4.multiHitEnabled)
+    end
+
     function multi:Dispatch(candidates, valid, startedAt)
         assert(not self:Pending(), "A previous M1 batch is still waiting for server replies.")
         local batch = {pending = 0, items = {}, timedOut = false}
         self.activeBatch = batch
         local seen = {}
         for _, candidate in ipairs(candidates) do
-            if #batch.items >= 5 or not valid()
+            if #batch.items >= CombatConfig.MaxTargetsPerSweep or not valid()
                 or os.clock() - startedAt >= CombatConfig.MaxSweepSeconds then break end
-            local humanoid = CombatManager.TargetHumanoid(candidate.target)
-            if humanoid and not seen[humanoid]
-                and CombatManager.CanAttack(candidate.target, candidate.range) then
+            local humanoid = CombatManager.RefreshCandidate(candidate)
+            if humanoid and not seen[humanoid] then
                 seen[humanoid] = true
-                candidate.requested = true
-                candidate.dispatchedAt = os.clock()
+                candidate.requested = false
                 batch.items[#batch.items + 1] = candidate
                 batch.pending = batch.pending + 1
                 -- InvokeServer yields inside each worker. Launch the next distinct
                 -- target without waiting for this one's response. No extra M1.
                 task.spawn(function()
-                    local ok, result = pcall(CombatManager.RegisterTarget, candidate.target)
+                    local ok, result = pcall(function()
+                        -- A queued task may run after a marker, mode, or target changes.
+                        if not valid() or os.clock() - startedAt >= CombatConfig.MaxSweepSeconds
+                            or CombatManager.RefreshCandidate(candidate) ~= humanoid then return end
+                        candidate.requested = true
+                        candidate.dispatchedAt = os.clock()
+                        return CombatManager.RegisterTarget(candidate.target)
+                    end)
                     candidate.returned = true
                     candidate.callOK = ok
                     candidate.reply = tostring(result):sub(1, 28)
@@ -2574,10 +2592,12 @@ do
             error("M1 replies still pending; batch remains locked until all return.", 0)
         end
         self.activeBatch = nil
+        local requested = {}
         for _, candidate in ipairs(batch.items) do
             if not candidate.callOK then error("Hit registration failed: " .. candidate.reply, 0) end
+            if candidate.requested then requested[#requested + 1] = candidate end
         end
-        return batch.items
+        return requested
     end
 
     function multi:Run(anchor)
@@ -2587,8 +2607,11 @@ do
         self.running = true
         local character, generation = localPlayer.Character, v4.inputGeneration
         local modeGeneration = v4.multiHitGeneration
+        local wasWIP, wasOP = v4.oldfarmEnabled, v4.autofarmEnabled
         local function valid()
-            return v4.autofarmEnabled and v4.multiHitEnabled
+            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+            return farmActive() and v4.multiHitEnabled and humanoid and humanoid.Health > 0
+                and v4.oldfarmEnabled == wasWIP and v4.autofarmEnabled == wasOP
                 and v4.multiHitGeneration == modeGeneration and localPlayer.Character == character
                 and v4.inputGeneration == generation and not v4.skillCasting
                 and not v4.fiveTestActive and not v4.refillPending
@@ -2598,9 +2621,10 @@ do
         v4.m1GroupInFlight = true
         v4.attackTarget = anchor
         local ok, err = pcall(function()
-            while os.clock() < self.nextM1 do
+            while os.clock() < math.max(self.nextM1, v4.nextNativeM1 or 0) do
                 if not valid() then return end
-                task.wait(math.max(0, math.min(0.03, self.nextM1 - os.clock())))
+                task.wait(math.max(0, math.min(0.03,
+                    math.max(self.nextM1, v4.nextNativeM1 or 0) - os.clock())))
             end
             if not valid() then return end
             local candidates = CombatManager.NearbyTargets(anchor)
@@ -2626,7 +2650,7 @@ do
         elseif not ok then
             diagDetail = tostring(err)
         end
-        diagShow(ok and "OP multi-hit timing trial" or "OP multi-hit stopped")
+        diagShow(ok and "Multi-hit dispatch completed" or "Multi-hit stopped")
         if not ok then error(err, 0) end
     end
 end
@@ -2634,7 +2658,7 @@ end
 local nextHitAt = 0
 local function hitBurst(target, maxDistance)
     if v4.opMultiHit:Pending() or v4.opMultiHit.running then return end
-    if v4.autofarmEnabled and v4.multiHitEnabled then
+    if farmActive() and v4.multiHitEnabled then
         local ok, err = pcall(v4.opMultiHit.Run, v4.opMultiHit, target)
         if not ok then
             v3.setMultiHit(false)
@@ -2777,6 +2801,7 @@ lobbyConnect(v3["4a"].Activated, function() --[[ Line: 67 ]] --[[ Name: 25ms ]]
 end);
 local function clickOnce()
     if v4.skillCasting then return false end
+    if os.clock() < (v4.nextNativeM1 or 0) then return false end
     local input = game:GetService("UserInputService")
     if input:GetFocusedTextBox() then return false end
     local camera = workspace.CurrentCamera
@@ -2791,6 +2816,7 @@ local function clickOnce()
     local vim = game:GetService("VirtualInputManager")
     vim:SendMouseButtonEvent(position.X, position.Y, 0, true, game, 0)
     vim:SendMouseButtonEvent(position.X, position.Y, 0, false, game, 0)
+    v4.nextNativeM1 = os.clock() + attackInterval()
     return true
 end
 v4.performM1 = clickOnce
@@ -2977,7 +3003,7 @@ task.spawn(function()
             elseif not ok then reportSkillStatus("HUD lookup error: " .. tostring(slot)) end
         end
         v4.autoAttack = inputAllowed() and farmActive() and not v4.centerClickFailed and not v4.skillCasting
-        local multiOwnsInput = (v4.autofarmEnabled and v4.multiHitEnabled) or v4.opMultiHit:Pending()
+        local multiOwnsInput = v4.opMultiHit:OwnsInput()
         if v4.autoAttack and not multiOwnsInput and os.clock() >= nextClickAt then
             local ok, clicked = pcall(clickOnce)
             nextClickAt = os.clock() + attackInterval()
