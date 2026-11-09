@@ -1228,8 +1228,8 @@ v3.autoSkillButton.Activated:Connect(function()
     v3.autoSkillButton.BackgroundColor3 = v3.autoSkillEnabled and Color3.new(0, 1, 0) or Color3.fromRGB(171, 0, 0)
     if v3.onAutoSkillChanged then v3.onAutoSkillChanged(v3.autoSkillEnabled) end
 end)
--- Opt-in only; each script load starts with ordinary combat.
-v3.multiHitEnabled = false
+-- Restored combat baseline; Multi Hit starts ON at the user's request.
+v3.multiHitEnabled = true
 v3.multiHitFrame = v3["48"]:Clone()
 v3.multiHitFrame.Name = "multiHit"
 v3.multiHitFrame.Parent = v3["4"]
@@ -1241,7 +1241,7 @@ v3.setMultiHit = function(enabled)
         and Color3.new(0, 1, 0) or Color3.fromRGB(171, 0, 0)
     if v3.onMultiHitChanged then v3.onMultiHitChanged(v3.multiHitEnabled) end
 end
-v3.setMultiHit(false)
+v3.setMultiHit(true)
 v3.multiHitButton.Activated:Connect(function()
     v3.setMultiHit(not v3.multiHitEnabled)
 end)
