@@ -1,6 +1,23 @@
 # Yozakura Lobby R2 — Play and Auto Start
 
-R2 adds a Play tab to the R1 lobby hub. The mission combat file is unchanged.
+R2 adds a Play tab to the R1 lobby hub. The current main/loader.lua uses separate lobby and mission sessions.
+
+## Lobby / mission switching
+
+Only the lobby module runs with confirmed lobby UI. Only the isolated Titan mission module runs with confirmed mission UI. Unknown, conflicting, menu and teleport states stop the active session before another module is started. The new mode must stay confirmed for two seconds before startup.
+
+Each launch owns its own cleanup hooks and workers. Mode changes during downloads discard the stale launch; an old completion or error cannot stop a newer session. Returning to the lobby and entering another mission can start fresh modules again. Failed initialization cleans up and retries after five seconds while the same mode remains confirmed.
+
+Lobby cleanup removes its UI and subscriptions and cancels its worker. Mission cleanup also handles partial initialization, removes its UI, cancels workers, blocks movement/native input outside mission, and releases held refill or skill keys. The existing Multi Hit logic and lobby features remain.
+
+Rejoin before using the updated loader to stop previously loaded revisions. The router queues itself across teleport when the executor supports it. Otherwise run main/loader.lua again after teleport.
+
+Offline checks pass for repeated lobby/mission transitions, unknown mode, stale downloads, startup failure/retry, cleanup, input cancellation, existing lobby/launch assertions and Multi Hit regression cases. Live Roblox mode detection and teleport behavior still require testing.
+
+Run the lifecycle checks with Python and the Lua 5.4 shared library:
+
+    python tests/test_router.py
+    python tests/test_mission_lifecycle.py
 
 ## Controls
 
