@@ -1,23 +1,11 @@
-# Current rollback: restore the previously accepted combat version
+# Restored combat release
 
-The current AOTR_maintenance.lua is restored byte-for-byte to the script from commit e6cc271976580f6878dc848a4443d0ff8ab6cc3a (blob 05c5f38d0bd734aeaa61afcfcfb49802f603507e).
+The active script is the accepted combat baseline from e6cc271976580f6878dc848a4443d0ff8ab6cc3a, with only the Multi Hit default changed to ON at the user's explicit request. Auto Skill remains OFF.
 
-This rollback follows the user's report that the later changes made combat worse. The supplied 22-second clip shows repeated swing effects while the objective remains at 6/41 Titans.
+The original movement, target selector, ordinary attack payload/pacing, M1 input implementation, skill implementation, and full-refill check are preserved. Later contact-trial, aiming, expanded-range, adjustable target-count, and faster-cadence changes are not part of the active script.
 
-Removed by restoring that version:
-- The later expanded Multi Hit range and primary-gate changes.
-- Forced weak-point root/gyro aiming and the revised weakness resolver.
-- The adjustable 3–10 / 5–10 target-count field.
-- The later input-start cadence change.
+Both current loader.lua and loader_m1_contact_trial.lua point to the same restored AOTR_maintenance.lua commit. The former trial entry point is now a compatibility alias. Historical pinned URLs still load their historical versions.
 
-Restored defaults:
-- Multi Hit OFF.
-- Auto Skill OFF.
-- Original uploaded ordinary attack/M1 behavior, movement, and target selection.
-- The full-refill check remains present in this accepted version.
+Rejoin before using the newly supplied loader to stop old workers. Multi Hit starts ON and its existing Mission toggle can turn it OFF. Auto Skill starts OFF.
 
-The existing optional Multi Hit toggle remains the older experimental implementation, capped at five attempted distinct targets. Leave it OFF while confirming ordinary combat. Its presence does not establish valid five-target damage.
-
-Rejoin before running the rollback loader. Old workers in an already-running game session are not stopped by changing GitHub files.
-
-Verified: GitHub returned the exact expected restored content blob SHA. No live-game speedup, damage increase, or multi-target success is claimed for this rollback.
+Verified: exact source comparison against the accepted baseline, allowing only the Multi Hit default/comment changes, complete-script syntax compilation, and GitHub readback. No new live-game multi-hit success or speedup is claimed.
