@@ -1892,8 +1892,88 @@ v4.UIP.InputEnded:Connect(function(v36) --[[ Line: 67 ]] --[[ Name: 25ms ]]
         v3["1"].Enabled = not v3["1"].Enabled;
     end;
 end);
+do -- WIP targeting and travel; OP keeps its restored behavior.
+    local targeting = {}
+    v4.wipTargeting = targeting
+
+    function targeting.Owner(target)
+        if not target or not target:IsA("BasePart") or not v4.titans
+            or not target:IsDescendantOf(v4.titans) then return end
+        local ancestor = target.Parent
+        while ancestor and ancestor ~= v4.titans do
+            local humanoid = ancestor:IsA("Model") and ancestor:FindFirstChildOfClass("Humanoid")
+            if humanoid then return humanoid, ancestor end
+            ancestor = ancestor.Parent
+        end
+    end
+
+    function targeting.WeakPoint(titan)
+        local target
+        if titan.Name == "Attack_Titan" then
+            local marker = titan:FindFirstChild("Marker")
+            if marker then
+                local ok, marked = pcall(function() return marker.Adornee end)
+                if ok then target = marked end
+            end
+        else
+            target = findPath(titan, {"Hitboxes", "Hit", "Nape"})
+        end
+        if target and target:IsA("BasePart") and target:IsDescendantOf(titan) then
+            return target
+        end
+    end
+
+    function targeting.Current(target)
+        local humanoid, titan = targeting.Owner(target)
+        return humanoid ~= nil and humanoid.Health > 0 and targeting.WeakPoint(titan) == target
+    end
+
+    function targeting.Select()
+        local character = localPlayer.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        if not root or not root:IsA("BasePart") or not humanoid or humanoid.Health <= 0 or not v4.titans then
+            v4.nape = nil
+            return
+        end
+        v4.character, v4.root = character, root
+        local boss = v4.titans:FindFirstChild("Attack_Titan")
+        local bossHumanoid = boss and boss:IsA("Model") and boss:FindFirstChildOfClass("Humanoid")
+        if bossHumanoid and bossHumanoid.Health > 0 then
+            -- The marker is authoritative, including when it temporarily disappears.
+            v4.nape = targeting.WeakPoint(boss)
+            return
+        end
+        local locked = v4.attackTarget or v4.nape
+        if targeting.Current(locked) then
+            v4.nape = locked
+            return
+        end
+        local nearest = math.huge
+        v4.nape = nil
+        for _, titan in ipairs(v4.titans:GetChildren()) do
+            local health = titan:IsA("Model") and titan:FindFirstChildOfClass("Humanoid")
+            if health and health.Health > 0 then
+                local target = targeting.WeakPoint(titan)
+                if target then
+                    local distance = (target.Position - root.Position).Magnitude
+                    if distance < nearest then nearest, v4.nape = distance, target end
+                end
+            end
+        end
+    end
+
+    function targeting.TravelSpeed(distance)
+        -- Preserve the original approach inside 40 studs; accelerate farther away.
+        return math.min(distance * 5 + math.max(0, distance - 40) * 3, 750)
+    end
+end
 local function v46() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     -- upvalues: v4 (ref)
+    if v4.oldfarmEnabled then
+        v4.wipTargeting.Select()
+        return
+    end
     -- Keep a living regular Titan selected; let boss markers be re-evaluated.
     local locked = v4.attackTarget or v4.nape
     if v4.autofarmEnabled and locked and locked:IsA("BasePart") and v4.titans
@@ -2668,13 +2748,23 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
     while farmActive() and task.wait(0.05) do
         if not farmActive() then break end
         if not refillBlocksCombat() then
-        if v4.autofarmEnabled and not livingFarmTarget(v4.attackTarget) then v4.attackTarget = nil end
-        if not v4.attackTarget or not v4.attackTarget.Parent then v46() end
-        if v4.attackTarget and v4.attackTarget.Parent then v4.nape = v4.attackTarget end
+        if v4.oldfarmEnabled then
+            if not v4.wipTargeting.Current(v4.attackTarget) then v4.attackTarget = nil end
+            v46()
+        else
+            if v4.autofarmEnabled and not livingFarmTarget(v4.attackTarget) then v4.attackTarget = nil end
+            if not v4.attackTarget or not v4.attackTarget.Parent then v46() end
+            if v4.attackTarget and v4.attackTarget.Parent then v4.nape = v4.attackTarget end
+        end
         if not farmActive() then break end
         if not refillBlocksCombat() then
         local v123 = regularHoverHeight(v4.nape);
-        if v4.titans:FindFirstChild("Attack_Titan") then
+        local useBossHeight = v4.titans:FindFirstChild("Attack_Titan") ~= nil
+        if v4.oldfarmEnabled then
+            local _, titan = v4.wipTargeting.Owner(v4.nape)
+            useBossHeight = titan ~= nil and titan.Name == "Attack_Titan"
+        end
+        if useBossHeight then
             v123 = 195;
         end;
         if v4.nape ~= nil then
@@ -2690,6 +2780,7 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
             local speedGain = v4.autofarmEnabled and 8 or 5
             local speedLimit = v4.autofarmEnabled and 1000 or 500
             local v129 = math.min(l_Magnitude_2 * speedGain, speedLimit);
+            if v4.oldfarmEnabled then v129 = v4.wipTargeting.TravelSpeed(l_Magnitude_2) end
             if v4.autofarmEnabled and l_Magnitude_2 < 3 then v129 = 0 end
             if l_BV_0 then
                 l_BV_0.MaxForce = Vector3.one * (v4.autofarmEnabled and 9000 or 5500);
@@ -2697,8 +2788,8 @@ local function v134() --[[ Line: 67 ]] --[[ Name: 25ms ]]
             end;
             v122.Position = Vector3.new(v122.Position.X, v126.Y, v122.Position.Z);
             if l_BG_0 then
-                -- Hold a level facing direction for this target; do not face the flight velocity.
-                if v4.steadyFacingTarget ~= v4.nape or not v4.steadyFacing then
+                -- WIP tracks the weakness each tick with level yaw; OP keeps its cached facing.
+                if v4.oldfarmEnabled or v4.steadyFacingTarget ~= v4.nape or not v4.steadyFacing then
                     local toward = v4.nape.Position - v4.root.Position
                     local flat = Vector3.new(toward.X, 0, toward.Z)
                     if flat.Magnitude < 0.01 then
@@ -2771,9 +2862,14 @@ end
 local CombatManager = {}
 function CombatManager.CanAttack(target, maxDistance)
     if v4.skillCasting then return false end
+    if v4.oldfarmEnabled and not v4.wipTargeting.Current(target) then return false end
     local character = localPlayer.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
     if not root or not root:IsA("BasePart") then return false end
+    if v4.oldfarmEnabled then
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if not humanoid or humanoid.Health <= 0 then return false end
+    end
     if not target or not target:IsA("BasePart") or not target.Parent then return false end
     if not v4.titans or not target:IsDescendantOf(v4.titans) then return false end
     local ancestor = target.Parent
@@ -2959,12 +3055,29 @@ local function hitBurst(target, maxDistance)
         return
     end
     local modeGeneration = v4.multiHitGeneration
+    local wipMode = v4.oldfarmEnabled
+    local character, inputGeneration = localPlayer.Character, v4.inputGeneration
+    local function wipValid()
+        return v4.oldfarmEnabled and v4.inputGeneration == inputGeneration
+            and localPlayer.Character == character and not refillBlocksCombat()
+            and v4.multiHitGeneration == modeGeneration
+            and CombatManager.CanAttack(target, maxDistance)
+    end
     v4.attackTarget = target
     local sent = 0
     for hit = 1, CombatConfig.AttemptsPerBurst do
         if v4.multiHitGeneration ~= modeGeneration then break end
         local delay = nextHitAt - os.clock()
-        if delay > 0 then task.wait(delay) end
+        if wipMode then
+            -- Release a dead Titan or old boss marker promptly, retaining the M1 cooldown.
+            while delay > 0 and wipValid() do
+                task.wait(math.min(0.02, delay))
+                delay = nextHitAt - os.clock()
+            end
+            if not wipValid() then break end
+        elseif delay > 0 then
+            task.wait(delay)
+        end
         if v4.multiHitGeneration ~= modeGeneration then break end
         if not farmActive() or refillBlocksCombat() then break end
         if not CombatManager.CanAttack(target, maxDistance) then break end
@@ -3011,7 +3124,7 @@ local function v136() -- One attack worker, independent of frame rate.
             diagShow("Stopped after error")
             return
         end
-        local targetInterval = attackInterval()
+        local targetInterval = v4.oldfarmEnabled and 0.05 or attackInterval()
         task.wait(math.max(0.01, targetInterval - (os.clock() - iterationStarted)))
     end
     v4.combatWorkerRunning = false
