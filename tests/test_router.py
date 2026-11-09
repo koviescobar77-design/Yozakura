@@ -262,7 +262,7 @@ print('PASS: actual router adapter rejects stale sessions before/after each modu
 
 assert "]====]" not in source
 code = "local makeController = assert(load([====[" + source + "]====]))()\n" + checks
-code += "\nlocal fetch\nlocal R={}\nlocal adapter=" + adapter + "\n" + adapter_checks
+code += "\nlocal fetch\nlocal R={}\nlocal say=function() end\nlocal adapter=" + adapter + "\n" + adapter_checks
 state=lib.luaL_newstate()
 lib.luaL_openlibs(state)
 try:
