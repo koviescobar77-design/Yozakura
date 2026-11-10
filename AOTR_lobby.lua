@@ -1,4 +1,4 @@
--- Yozakura Lobby R15: mission setup, modifiers and countdown.
+-- Yozakura Lobby R16: mission setup, modifiers and countdown.
 -- Called by loader_lobby_mission.lua with the shared context and rules.
 local ctx, R, Launch = ...
 assert(Launch, "R2 requires the updated loader")
@@ -112,7 +112,7 @@ local function text(parent, label, pos, size)
         TextColor3=Color3.new(1,1,1), Font=Enum.Font.SourceSansBold, TextSize=17,
         TextXAlignment=Enum.TextXAlignment.Left})
 end
-local header = text(panel, "Yozakura  |  Lobby R15", UDim2.fromOffset(14,6), UDim2.fromOffset(380,36))
+local header = text(panel, "Yozakura  |  Lobby R16", UDim2.fromOffset(14,6), UDim2.fromOffset(380,36))
 header.TextSize = 27
 local status = text(panel, "Paused · select options, then Start", UDim2.fromOffset(146,430), UDim2.fromOffset(490,40))
 status.TextWrapped = true; status.TextSize = 15
@@ -204,12 +204,18 @@ toggle(play,"AUTO WAVES — start and resume",config.play,"autoWaves",function(e
     if runButton then runButton.Text=enabled and "Pause" or "Run tasks" end
     report(enabled and "Auto Waves ON: preparing Waves; resumes on lobby load" or "Auto Waves OFF")
 end)
-local playAction=button(play,"PLAY SELECTED SETUP",nil,UDim2.new(1,0,0,40),function()
+local function requestSelectedSetup()
     if launchBusy then report("Launch in progress · Cancel first"); return end
+    if launchMachine and launchMachine.held then
+        local resumed,message=launchMachine:ResumeParty(config.play)
+        if not resumed then report(message);return end
+    end
+    navigationRequested=nil
     playRequested=true;active=true;epoch=epoch+1
     if runButton then runButton.Text="Pause" end
-    report("Preparing selected mission setup")
-end)
+    report("Opening Modifiers and applying selected setup")
+end
+local playAction=button(play,"PLAY SELECTED SETUP",nil,UDim2.new(1,0,0,40),requestSelectedSetup)
 playAction.BackgroundColor3=Color3.fromRGB(25,105,47)
 button(play,"Cancel launch / countdown",nil,nil,function()
     active=false;playRequested=false;navigationRequested=nil;epoch=epoch+1
@@ -271,6 +277,7 @@ choiceRefresh[#choiceRefresh+1]=function()
 end
 note(play,"Modifiers",24)
 for _,name in ipairs(Launch.modifiers)do toggle(play,name,config.play.modifiers,name)end
+button(play,"APPLY MODIFIERS & START",nil,UDim2.new(1,0,0,40),requestSelectedSetup)
 refreshChoices()
 local claims=page("Claims")
 toggle(claims,"Auto Claim Quests",config.jobs,"quests")
@@ -1131,7 +1138,8 @@ local function launchPress(name,token)
     if not b then b,err=uniqueButton(root,names) end
     if not b then return false,err end
     -- Retry only navigation. Purchases, upgrades, toggles and Start remain single-dispatch.
-    local retryNavigation=name=="Gear Up" or name=="Play" or table.find(Launch.modes,name)~=nil
+    local retryNavigation=name=="Gear Up" or name=="Play" or name=="Modifiers"
+        or name=="Close modifiers" or table.find(Launch.modes,name)~=nil
     if retryNavigation then
         local before=stage()
         local deadline=os.clock()+20
