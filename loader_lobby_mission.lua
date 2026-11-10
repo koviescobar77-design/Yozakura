@@ -18,6 +18,9 @@ assert(not pg:FindFirstChild("tekkit") and not pg:FindFirstChild("YozakuraFamily
     "Rejoin first: an older Yozakura script is already loaded")
 local function fetch(name)
     local url=name=="AOTR_main_menu.lua" and "https://raw.githubusercontent.com/koviescobar77-design/Yozakura/a1741ecc89377ffd48c453e3241e1bb0a5823e0a/AOTR_main_menu.lua" or ROOT..name
+    if name=="AOTR_lobby.lua" then
+        url="https://raw.githubusercontent.com/koviescobar77-design/Yozakura/b9c910a700a63547bc5155cad393e01e4d3045c7/AOTR_lobby.lua"
+    end
     local source=game:HttpGet(url)
     local chunk,err=loadstring(source,"@Yozakura/"..name)
     assert(chunk,err)
