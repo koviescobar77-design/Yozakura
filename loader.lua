@@ -11,6 +11,26 @@ assert(chunk, err)
 -- Runtime compatibility is unverified. Only a window containing the hub title is styled.
 -- Optional: getgenv().YozakuraBannerAsset = "rbxassetid://YOUR_UPLOADED_IMAGE_ID"
 local env = type(getgenv) == "function" and getgenv() or _G
+-- PNG hosted with the loader. Custom assets require executor image-file support.
+local bannerAsset = env.YozakuraBannerAsset
+if type(bannerAsset) ~= "string" or bannerAsset == "" then
+    local register = getcustomasset or getsynasset
+    if type(register) == "function" and type(writefile) == "function" then
+        local ok, result = pcall(function()
+            local file = "YozakuraSakura-754b2749.png"
+            if type(isfile) ~= "function" or not isfile(file) then
+                local bytes = game:HttpGet("https://raw.githubusercontent.com/koviescobar77-design/Yozakura/754b2749ae498b8a4dfecce59161ec28907eccf9/assets/yozakura-sakura.png")
+                assert(bytes:sub(1, 8) == string.char(137, 80, 78, 71, 13, 10, 26, 10), "Invalid banner PNG")
+                writefile(file, bytes)
+            end
+            return register(file)
+        end)
+        if ok then bannerAsset = result
+        else warn("[Yozakura] Banner image could not load: " .. tostring(result)) end
+    else
+        warn("[Yozakura] Generated banner needs getcustomasset/writefile or YozakuraBannerAsset.")
+    end
+end
 local token = {}
 env.YozakuraTitleOverride = token
 local pink = Color3.fromRGB(255, 115, 180)
@@ -51,10 +71,10 @@ local function sakura(image)
         BackgroundColor3 = Color3.fromRGB(31, 12, 30), BorderSizePixel = 0,
         ClipsDescendants = true, ZIndex = image.ZIndex + 1, Active = false,
     })
-    if type(env.YozakuraBannerAsset) == "string" and env.YozakuraBannerAsset ~= "" then
+    if type(bannerAsset) == "string" and bannerAsset ~= "" then
         make("ImageLabel", art, {
             Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
-            Image = env.YozakuraBannerAsset, ScaleType = Enum.ScaleType.Crop,
+            Image = bannerAsset, ScaleType = Enum.ScaleType.Fit,
             ZIndex = art.ZIndex + 1,
         })
         return
@@ -108,6 +128,30 @@ local function sakura(image)
 end
 local windows = setmetatable({}, {__mode = "k"})
 local function style(window, title)
+    -- Locate the home hero by its actual labels, rather than guessing the image size.
+    for _, label in ipairs(window:GetDescendants()) do
+        if label:IsA("TextLabel") and not label:FindFirstAncestor("YozakuraArtwork") then
+            local t = plain(label.Text)
+            if t == "attack titan" or t == "attack on titan"
+                or label.Text:find("進撃の巨人", 1, true) then
+                local hero = label.Parent
+                while hero and hero ~= window do
+                    if hero:IsA("GuiObject") and hero.AbsoluteSize.X >= 220
+                        and hero.AbsoluteSize.Y >= 65 and hero.AbsoluteSize.Y <= 200
+                        and hero.AbsoluteSize.X / hero.AbsoluteSize.Y >= 2 then
+                        if not hero:FindFirstChild("YozakuraArtwork") then
+                            for _, child in ipairs(hero:GetDescendants()) do
+                                if child:IsA("GuiObject") then child.Visible = false end
+                            end
+                            sakura(hero)
+                        end
+                        break
+                    end
+                    hero = hero.Parent
+                end
+            end
+        end
+    end
     for _, o in ipairs(window:GetDescendants()) do
         if o.Name ~= "YozakuraArtwork" and not o:FindFirstAncestor("YozakuraArtwork") then
             pcall(function()
@@ -121,6 +165,14 @@ local function style(window, title)
                         and math.abs(o.AbsolutePosition.Y - title.AbsolutePosition.Y) <= 40 then
                         o.Text = ""
                     end
+                end
+                -- The S emblem sits immediately left of the Yozakura heading.
+                if (o:IsA("ImageLabel") or o:IsA("ImageButton"))
+                    and o.AbsoluteSize.X <= 64 and o.AbsoluteSize.Y <= 64
+                    and o.AbsolutePosition.X < title.AbsolutePosition.X
+                    and title.AbsolutePosition.X - o.AbsolutePosition.X <= 70
+                    and math.abs(o.AbsolutePosition.Y - title.AbsolutePosition.Y) <= 32 then
+                    o.Visible = false
                 end
                 if o:IsA("ScrollingFrame") then o.ScrollBarImageColor3 = pink end
                 if o:IsA("UIGradient") then
