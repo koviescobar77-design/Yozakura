@@ -1,4 +1,4 @@
--- Yozakura Lobby R13: mission setup, modifiers and countdown.
+-- Yozakura Lobby R14: mission setup, modifiers and countdown.
 -- Called by loader_lobby_mission.lua with the shared context and rules.
 local ctx, R, Launch = ...
 assert(Launch, "R2 requires the updated loader")
@@ -112,7 +112,7 @@ local function text(parent, label, pos, size)
         TextColor3=Color3.new(1,1,1), Font=Enum.Font.SourceSansBold, TextSize=17,
         TextXAlignment=Enum.TextXAlignment.Left})
 end
-local header = text(panel, "Yozakura  |  Lobby R13", UDim2.fromOffset(14,6), UDim2.fromOffset(380,36))
+local header = text(panel, "Yozakura  |  Lobby R14", UDim2.fromOffset(14,6), UDim2.fromOffset(380,36))
 header.TextSize = 27
 local status = text(panel, "Paused · select options, then Start", UDim2.fromOffset(146,430), UDim2.fromOffset(490,40))
 status.TextWrapped = true; status.TextSize = 15
@@ -516,13 +516,15 @@ local function click(b,token,physical)
         assert(size.X>=4 and size.Y>=4,"Target too small")
         local guiPoint=b.AbsolutePosition+b.AbsoluteSize/2
         local accepted=false
+        local blocker
         for _,hit in ipairs(pg:GetGuiObjectsAtPosition(guiPoint.X,guiPoint.Y)) do
             if hit==b or hit:IsDescendantOf(b) then accepted=true;break end
             -- Ignore passive artwork, but respect real controls in front of the target.
             if hit.Visible and (hit:IsA("GuiButton") or hit:IsA("TextBox") or hit.Active)
-                and not b:IsDescendantOf(hit) then break end
+                and not b:IsDescendantOf(hit) then blocker=hit;break end
         end
-        assert(accepted,"Target blocked: "..b:GetFullName())
+        assert(accepted,blocker and ("Target blocked by: "..blocker:GetFullName().." | target: "..b:GetFullName())
+            or ("Target missing from hit test: "..b:GetFullName()))
         local screenPoint=guiPoint+game:GetService("GuiService"):GetGuiInset()
         mouseState.input=game:GetService("VirtualInputManager")
         mouseState.point=screenPoint
@@ -1065,21 +1067,32 @@ local function modeCard(name)
     local found={}
     for _,label in ipairs(exact(pg,{name})) do
         local p=label
+        local card,namedCard
         while p and p~=pg and not p:IsA("ScreenGui") do
             if p:IsA("GuiObject") and visible(p) then
-                local size=p.AbsoluteSize
                 local count=0
-                for _,mode in ipairs(Launch.modes) do if #exact(p,{mode})>0 then count=count+1 end end
+                for _,mode in ipairs(Launch.modes) do
+                    if #exact(p,{mode})>0 then count=count+1 end
+                end
+                -- Stop before the shared Missions/Raids/Waves container.
                 if count>1 then break end
+                local size=p.AbsoluteSize
                 if count==1 and size.X>50 and size.Y>size.X*1.2 then
-                    found[p]=true;break
+                    -- Keep walking past decorative Inner frames to the whole card.
+                    card=p
+                    if R.clean(p.Name)==R.clean(name) then namedCard=p end
                 end
             end
             p=p.Parent
         end
+        card=namedCard or card
+        if card then found[card]=true end
     end
     local result
-    for card in pairs(found) do if result then return nil end;result=card end
+    for card in pairs(found) do
+        if result then return nil end
+        result=card
+    end
     return result
 end
 local function launchPress(name,token)
