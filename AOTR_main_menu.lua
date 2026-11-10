@@ -62,7 +62,7 @@ end
 local panel=make("Frame",gui,{Size=UDim2.fromOffset(380,348),Position=UDim2.fromOffset(16,120),
     Active=true,BackgroundColor3=Color3.fromRGB(23,22,25),BorderSizePixel=0})
 round(panel)
-local title=make("TextLabel",panel,{Active=true,Text="Yozakura | Menu R11",Size=UDim2.new(1,-100,0,45),
+local title=make("TextLabel",panel,{Active=true,Text="Yozakura | Menu R12",Size=UDim2.new(1,-100,0,45),
     Position=UDim2.fromOffset(15,0),BackgroundTransparency=1,TextColor3=Color3.new(1,1,1),
     Font=Enum.Font.SourceSansBold,TextSize=22,TextXAlignment=Enum.TextXAlignment.Left})
 -- Mission-style grabbing: start from anywhere inside the panel.
