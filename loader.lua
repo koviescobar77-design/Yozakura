@@ -126,8 +126,99 @@ local function sakura(image)
         ZIndex = art.ZIndex + 4,
     })
 end
+
+-- Keep navigation accents pink when the protected UI updates hover/selection colors.
+if type(env.YozakuraNavCleanup) == "function" then pcall(env.YozakuraNavCleanup) end
+local navConnections = {}
+local navSeen = setmetatable({}, {__mode = "k"})
+local navRows = setmetatable({}, {__mode = "k"})
+local navActive = true
+env.YozakuraNavCleanup = function()
+    navActive = false
+    for _, connection in ipairs(navConnections) do connection:Disconnect() end
+    table.clear(navConnections)
+end
+local navNames = {
+    home = true, kaitun = true, autofarm = true, missions = true,
+    raids = true, pacing = true, safety = true, combat = true,
+    visuals = true, settings = true, premium = true, configs = true,
+}
+local function navColor(color)
+    local h, s, v = color:ToHSV()
+    -- Warm gold colors are supplied by the original theme on every interaction.
+    if h >= 0.065 and h <= 0.20 and s > 0.08 then
+        return Color3.fromHSV(0.93, math.max(s, 0.45), math.min(v, 0.68))
+    end
+    return color
+end
+local function watchNavObject(object)
+    if navSeen[object] then return end
+    navSeen[object] = true
+    local properties = {}
+    if object:IsA("GuiObject") then
+        table.insert(properties, "BackgroundColor3")
+        table.insert(properties, "BorderColor3")
+    end
+    if object:IsA("TextLabel") or object:IsA("TextButton") then
+        table.insert(properties, "TextColor3")
+    end
+    if object:IsA("ImageLabel") or object:IsA("ImageButton") then
+        table.insert(properties, "ImageColor3")
+    end
+    if object:IsA("UIStroke") then table.insert(properties, "Color") end
+    if object:IsA("UIGradient") then table.insert(properties, "Color") end
+    for _, property in ipairs(properties) do
+        local busy = false
+        local function refresh()
+            if busy or not navActive then return end
+            busy = true
+            pcall(function()
+                local old = object[property]
+                if object:IsA("UIGradient") then
+                    local points, changed = {}, false
+                    for _, point in ipairs(old.Keypoints) do
+                        local color = navColor(point.Value)
+                        if color ~= point.Value then changed = true end
+                        table.insert(points, ColorSequenceKeypoint.new(point.Time, color))
+                    end
+                    if changed then object[property] = ColorSequence.new(points) end
+                else
+                    local color = navColor(old)
+                    if color ~= old then object[property] = color end
+                end
+            end)
+            busy = false
+        end
+        table.insert(navConnections, object:GetPropertyChangedSignal(property):Connect(refresh))
+        refresh()
+    end
+end
+local function bindNavigation(window, title)
+    for _, label in ipairs(window:GetDescendants()) do
+        if (label:IsA("TextLabel") or label:IsA("TextButton"))
+            and navNames[plain(label.Text)]
+            and label.AbsolutePosition.X < title.AbsolutePosition.X + 110 then
+            local row = label:IsA("TextButton") and label or label.Parent
+            while row and row ~= window do
+                if row:IsA("GuiObject") and row.AbsoluteSize.X >= 100
+                    and row.AbsoluteSize.X <= 250 and row.AbsoluteSize.Y <= 48 then
+                    if not navRows[row] then
+                        navRows[row] = true
+                        watchNavObject(row)
+                        for _, child in ipairs(row:GetDescendants()) do watchNavObject(child) end
+                        table.insert(navConnections, row.DescendantAdded:Connect(watchNavObject))
+                    end
+                    break
+                end
+                row = row.Parent
+            end
+        end
+    end
+end
+
 local windows = setmetatable({}, {__mode = "k"})
 local function style(window, title)
+    bindNavigation(window, title)
     -- Locate the home hero by its actual labels, rather than guessing the image size.
     for _, label in ipairs(window:GetDescendants()) do
         if label:IsA("TextLabel") and not label:FindFirstAncestor("YozakuraArtwork") then
