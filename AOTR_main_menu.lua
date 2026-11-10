@@ -7,6 +7,14 @@ local generation=0
 local env=type(getgenv)=="function" and getgenv() or _G
 env.YozakuraSelectedSlot=env.YozakuraSelectedSlot or "A"
 local connections={}
+local autoMouse={owner=nil,down=false,input=nil,point=nil,nextAt=0}
+local function releaseMouse()
+    if autoMouse.down and autoMouse.input and autoMouse.point then
+        local p=autoMouse.point
+        pcall(function()autoMouse.input:SendMouseButtonEvent(p.X,p.Y,0,false,game,0)end)
+    end
+    autoMouse.down=false
+end
 -- MenuNavigator approach: focus the actual game GuiButton, then send Enter.
 local navigation={saved={},service=nil,original=nil,owned=nil,input=nil,enterDown=false}
 local function releaseEnter()
@@ -16,6 +24,7 @@ local function releaseEnter()
     end
 end
 local function restoreNavigation()
+    releaseMouse()
     releaseEnter()
     if navigation.service and navigation.service.SelectedObject==navigation.owned then
         pcall(function()navigation.service.SelectedObject=navigation.original end)
@@ -53,7 +62,7 @@ end
 local panel=make("Frame",gui,{Size=UDim2.fromOffset(380,348),Position=UDim2.fromOffset(16,120),
     Active=true,BackgroundColor3=Color3.fromRGB(23,22,25),BorderSizePixel=0})
 round(panel)
-local title=make("TextLabel",panel,{Active=true,Text="Yozakura | Menu R8",Size=UDim2.new(1,-100,0,45),
+local title=make("TextLabel",panel,{Active=true,Text="Yozakura | Menu R9",Size=UDim2.new(1,-100,0,45),
     Position=UDim2.fromOffset(15,0),BackgroundTransparency=1,TextColor3=Color3.new(1,1,1),
     Font=Enum.Font.SourceSansBold,TextSize=22,TextXAlignment=Enum.TextXAlignment.Left})
 -- Mission-style grabbing: start from anywhere inside the panel.
@@ -159,10 +168,8 @@ local function showClick(target)
         ApplyStrokeMode=Enum.ApplyStrokeMode.Border,
         Color=Color3.fromRGB(35,145,255),Thickness=3,Enabled=true})
     clickGui=clickBox
-    local stroke=clickBox
-    task.delay(0.8,function()
-        if alive and serial==clickSerial then stroke.Enabled=false end
-    end)
+    -- Keep the guide visible through settling and the click interval.
+    -- Stop, a new target, or menu cleanup removes it.
 end
 local function navigateActivate(target)
     if not target:IsA("GuiButton") then return false,"not a selectable game button",false end
@@ -237,44 +244,59 @@ local function click(target,method)
         if focused or keySent then return true end
         if method=="keyboard" then return false,tostring(navError) end
     end
-    if not valid() or token~=generation then return false,"Navigation cancelled" end
-    gui.Enabled=false
-    task.wait()
-    if not valid() or token~=generation then
-        if alive then gui.Enabled=true end
-        return false,"Navigation cancelled"
+    if autoMouse.owner then return false,"Auto-clicker is finishing the previous click" end
+    local owner={}
+    autoMouse.owner=owner
+    local function current()
+        return valid() and token==generation and target.Parent and visible(target)
+            and clickBox and clickBox.Parent==target and clickBox.Enabled
     end
-    -- Click the centre of the exact control carrying the blue border.
-    local point=target.AbsolutePosition+target.AbsoluteSize/2
-    local points={point}
-    local screen=target:FindFirstAncestorWhichIsA("ScreenGui")
-    local ok,inset=pcall(function()return game:GetService("GuiService"):GetGuiInset()end)
-    if ok and screen and not screen.IgnoreGuiInset then points={point+inset} end
-    local found
-    for _,p in ipairs(points)do
-        if clearPoint(target,p) then found=p;break end
-    end
-    if not found then
-        if alive then gui.Enabled=true end
-        return false,"Button blocked by another interactive control"
-    end
-    showClick(target,found)
-    local pressed=false
-    local input
     local sent,err=pcall(function()
-        input=game:GetService("VirtualInputManager")
-        input:SendMouseMoveEvent(found.X,found.Y,game)
-        input:SendMouseButtonEvent(found.X,found.Y,0,true,game,0)
-        pressed=true
+        local deadline=os.clock()+4
+        local stableSince=os.clock()
+        local position,size=target.AbsolutePosition,target.AbsoluteSize
+        -- Wait for the highlighted button to stop moving for 0.3 seconds.
+        -- The same timer also prevents overlapping Play/NO/Lobby clicks.
+        repeat
+            if not current() then error("Auto-click cancelled: target changed") end
+            local nextPosition,nextSize=target.AbsolutePosition,target.AbsoluteSize
+            if (nextPosition-position).Magnitude>1 or (nextSize-size).Magnitude>1 then
+                stableSince=os.clock()
+                position,size=nextPosition,nextSize
+            end
+            if os.clock()>=deadline then error("Blue-box target is still moving") end
+            task.wait(0.05)
+        until os.clock()-stableSince>=0.3 and os.clock()>=autoMouse.nextAt
+        if not current() then error("Auto-click cancelled") end
+        -- Hide only our panel for hit testing; the border stays on the game button.
+        gui.Enabled=false
+        task.wait()
+        if not current() then error("Auto-click cancelled") end
+        if (target.AbsolutePosition-position).Magnitude>1
+            or (target.AbsoluteSize-size).Magnitude>1 then
+            error("Blue-box target moved before the click")
+        end
+        if size.X<4 or size.Y<4 then error("Blue-box target is too small") end
+        local point=position+size/2
+        local screen=target:FindFirstAncestorWhichIsA("ScreenGui")
+        if screen and not screen.IgnoreGuiInset then
+            point=point+game:GetService("GuiService"):GetGuiInset()
+        end
+        -- Never click through a popup or another interactive control.
+        if not clearPoint(target,point) then error("Blue box is covered; click cancelled") end
+        autoMouse.input=game:GetService("VirtualInputManager")
+        autoMouse.point=point
+        autoMouse.input:SendMouseMoveEvent(point.X,point.Y,game)
+        autoMouse.nextAt=os.clock()+1
+        autoMouse.down=true
+        autoMouse.input:SendMouseButtonEvent(point.X,point.Y,0,true,game,0)
         task.wait(0.05)
-        input:SendMouseButtonEvent(found.X,found.Y,0,false,game,0)
+        releaseMouse()
     end)
-    if not sent and pressed then
-        pcall(function()input:SendMouseButtonEvent(found.X,found.Y,0,false,game,0)end)
-
-    end
+    releaseMouse()
+    if autoMouse.owner==owner then autoMouse.owner=nil end
     if alive then gui.Enabled=true end
-    return sent or pressed,err or navError
+    return sent,err or navError
 end
 local function slotName(o)
     if not visible(o) then return nil end
