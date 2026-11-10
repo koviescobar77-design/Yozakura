@@ -53,7 +53,7 @@ end
 local panel=make("Frame",gui,{Size=UDim2.fromOffset(380,348),Position=UDim2.fromOffset(16,120),
     Active=true,BackgroundColor3=Color3.fromRGB(23,22,25),BorderSizePixel=0})
 round(panel)
-local title=make("TextLabel",panel,{Active=true,Text="Yozakura | Menu R7",Size=UDim2.new(1,-100,0,45),
+local title=make("TextLabel",panel,{Active=true,Text="Yozakura | Menu R8",Size=UDim2.new(1,-100,0,45),
     Position=UDim2.fromOffset(15,0),BackgroundTransparency=1,TextColor3=Color3.new(1,1,1),
     Font=Enum.Font.SourceSansBold,TextSize=22,TextXAlignment=Enum.TextXAlignment.Left})
 -- Mission-style grabbing: start from anywhere inside the panel.
@@ -244,15 +244,8 @@ local function click(target,method)
         if alive then gui.Enabled=true end
         return false,"Navigation cancelled"
     end
-    -- Use the rendered action label when a button includes decorative space.
-    local anchor=target
-    for _,child in ipairs(target:GetDescendants()) do
-        if (child:IsA("TextLabel") or child:IsA("TextButton")) and visible(child)
-            and (key(child.Text)=="play" or key(child.Text)=="lobby" or key(child.Text)=="select") then
-            anchor=child;break
-        end
-    end
-    local point=anchor.AbsolutePosition+anchor.AbsoluteSize/2
+    -- Click the centre of the exact control carrying the blue border.
+    local point=target.AbsolutePosition+target.AbsoluteSize/2
     local points={point}
     local screen=target:FindFirstAncestorWhichIsA("ScreenGui")
     local ok,inset=pcall(function()return game:GetService("GuiService"):GetGuiInset()end)
@@ -332,6 +325,28 @@ local function findSlot(letter)
     if direct then return direct,nil,direct end
     return nil,"SELECT button not found inside Slot "..letter
 end
+-- Only dismiss the tutorial offer shown in the reference screenshot.
+local function tutorialOffer()
+    for _,label in ipairs(pg:GetDescendants()) do
+        if (label:IsA("TextLabel") or label:IsA("TextButton")) and visible(label) then
+            local text=key(label.Text)
+            if text:find("tutorial",1,true) and text:find("gems",1,true) then
+                local parent=label.Parent
+                while parent and parent~=pg and not parent:IsA("ScreenGui") do
+                    local no=findControl("No",parent)
+                    local yes=findControl("Yes",parent)
+                    if no and yes and no:IsA("GuiButton") and yes:IsA("GuiButton")
+                        and no.AbsolutePosition.X<yes.AbsolutePosition.X then
+                        return true,no
+                    end
+                    parent=parent.Parent
+                end
+                return true,nil
+            end
+        end
+    end
+    return false,nil
+end
 local function selectSlot(letter)
     if not valid() or busy then return end
     generation=generation+1
@@ -339,16 +354,44 @@ local function selectSlot(letter)
     env.YozakuraSelectedSlot=letter
     busy=true
     local function running()return valid() and token==generation end
+    local function clearTutorial()
+        local deadline=os.clock()+15
+        while running() do
+            local offered,no=tutorialOffer()
+            if not offered then return true end
+            if os.clock()>=deadline then
+                report("Tutorial NO did not close the popup; stopped")
+                return false
+            end
+            if no then
+                report("Tutorial popup: clicking NO on the left")
+                local sent,message=click(no,"mouse")
+                if not sent then report("Tutorial NO: "..tostring(message));return false end
+                local nextTry=os.clock()+1
+                repeat
+                    if not running() then return false end
+                    task.wait(0.1)
+                until not tutorialOffer() or os.clock()>=nextTry
+            else
+                report("Waiting for tutorial NO / YES controls")
+                task.wait(0.1)
+            end
+        end
+        return false
+    end
     local function waitFor(predicate,seconds)
         local deadline=os.clock()+seconds
         repeat
             if not running()then return false end
+            if not clearTutorial() then return false end
+            if not running() then return false end
             if predicate()then return true end
             task.wait(0.1)
         until os.clock()>=deadline
         return false
     end
     local ok,err=pcall(function()
+        if not clearTutorial() then return end
         -- A router restart may occur while the destination picker is already open.
         local destination=findControl("Lobby")
         if destination and not anySlots() and not findControl("Play") then
@@ -395,6 +438,7 @@ local function selectSlot(letter)
         local lobbyButton
         local attempts=0
         while running() do
+            if not clearTutorial() then return end
             lobbyButton=findControl("Lobby")
             if lobbyButton then break end
             -- Resolve again each attempt: the game may replace its Play instance.
@@ -402,15 +446,15 @@ local function selectSlot(letter)
             play=findControl("Play")
             if not play then break end
             attempts=attempts+1
-            -- Exactly the same activation path used by the slot SELECT button.
-            local sent,message=click(play)
+            -- Physical input at the outlined Play button only.
+            local sent,message=click(play,"mouse")
             if not running()then return end
-            print("[Yozakura Menu] Play #"..attempts.." [slot activation] "..(sent and "sent, not yet confirmed" or tostring(message)).." | "..play:GetFullName())
+            print("[Yozakura Menu] Play #"..attempts.." [blue-box mouse] "..(sent and "sent, not yet confirmed" or tostring(message)).." | "..play:GetFullName())
             if not sent then
                 report("Play: "..tostring(message))
                 return
             end
-            report("Play #"..attempts.." [slot activation] sent; waiting for screen change")
+            report("Play #"..attempts.." [blue-box mouse] sent; waiting for screen change")
             -- Poll during the one-second interval so Stop/loading cancels promptly.
             local nextClick=os.clock()+1
             waitFor(function()
@@ -424,7 +468,7 @@ local function selectSlot(letter)
             waitFor(function()lobbyButton=findControl("Lobby");return lobbyButton~=nil end,15)
             if running() and lobbyButton then
                 report("Pressing Lobby")
-                local lobbySent,lobbyError=click(lobbyButton)
+                local lobbySent,lobbyError=click(lobbyButton,"mouse")
                 if not lobbySent then report("Lobby failed: "..tostring(lobbyError));return end
                 report("Lobby pressed; waiting for loading")
                 if not waitFor(function()return not visible(lobbyButton)end,15) and running()then
