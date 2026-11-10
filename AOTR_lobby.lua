@@ -1,4 +1,4 @@
--- Yozakura Lobby R14: mission setup, modifiers and countdown.
+-- Yozakura Lobby R15: mission setup, modifiers and countdown.
 -- Called by loader_lobby_mission.lua with the shared context and rules.
 local ctx, R, Launch = ...
 assert(Launch, "R2 requires the updated loader")
@@ -112,7 +112,7 @@ local function text(parent, label, pos, size)
         TextColor3=Color3.new(1,1,1), Font=Enum.Font.SourceSansBold, TextSize=17,
         TextXAlignment=Enum.TextXAlignment.Left})
 end
-local header = text(panel, "Yozakura  |  Lobby R14", UDim2.fromOffset(14,6), UDim2.fromOffset(380,36))
+local header = text(panel, "Yozakura  |  Lobby R15", UDim2.fromOffset(14,6), UDim2.fromOffset(380,36))
 header.TextSize = 27
 local status = text(panel, "Paused · select options, then Start", UDim2.fromOffset(146,430), UDim2.fromOffset(490,40))
 status.TextWrapped = true; status.TextSize = 15
@@ -939,14 +939,35 @@ local function partyPanel()
         end
     end
 end
+local function modifierClose(root)
+    local b=uniqueButton(root,{"Back","Close"})
+    if b then return b end
+    local found
+    for _,o in ipairs(root:GetDescendants()) do
+        if o:IsA("GuiButton") and visible(o) then
+            local name=R.clean(o.Name)
+            local value=o:IsA("TextButton") and R.clean(o.Text) or ""
+            if name=="close" or name=="exit" or name=="back" or value=="x" or value=="×" then
+                if found and found~=o then return nil end
+                found=o
+            end
+        end
+    end
+    return found
+end
 local function modifierPanel()
     for _,heading in ipairs(exact(pg,{"Modifiers"}))do
-        if not target(heading) then
-            local p=enclosing(heading,function(node)
-                return uniqueButton(node,{"Back"}) and #exact(node,Launch.modifiers)>0
-            end)
-            if p then return p end
-        end
+        local p=enclosing(heading,function(node)
+            return modifierClose(node) and #exact(node,Launch.modifiers)>0
+        end)
+        if p then return p end
+    end
+    -- Some layouts have no text heading, only the modifier rows and a close icon.
+    for _,label in ipairs(exact(pg,Launch.modifiers)) do
+        local p=enclosing(label,function(node)
+            return modifierClose(node) and #exact(node,Launch.modifiers)>=2
+        end)
+        if p then return p end
     end
 end
 local function setupPanel()
@@ -1048,7 +1069,7 @@ local function modifierState(name)
     for _,o in ipairs(row:GetDescendants())do
         local n=R.clean(o.Name)
         if (n=="selected" or n=="checked" or n=="enabled") and o:IsA("BoolValue") then take(o.Value) end
-        if (n=="checkmark" or n=="tick" or n=="check") and o:IsA("GuiObject") then
+        if (n=="checkmark" or n=="tick" or n=="check" or n=="selected") and o:IsA("GuiObject") then
             local shown=o.Visible
             if o:IsA("ImageLabel") or o:IsA("ImageButton") then shown=shown and o.Image~="" and o.ImageTransparency<1 end
             take(shown)
@@ -1105,6 +1126,7 @@ local function launchPress(name,token)
     elseif name=="Back" then root=modifierPanel() or objectivePanel() or setupPanel() end
     if not root then return false,"Panel missing for "..name end
     local b,err
+    if name=="Close modifiers" then b=modifierClose(root) end
     if table.find(Launch.modes,name) then b=modeCard(name) end
     if not b then b,err=uniqueButton(root,names) end
     if not b then return false,err end
@@ -1138,6 +1160,11 @@ local function launchPress(name,token)
 end
 launchMachine=Launch.new({
     now=os.clock,valid=valid,wait=pause,status=report,stage=stage,
+    partyMatches=function(c)
+        local p=partyPanel()
+        -- Waves has no map/boss configuration to recreate.
+        return c.mode=="Waves" and p~=nil and #exact(p,{"Waves"})>0
+    end,
     press=launchPress,difficulty=readDifficulty,
     selectContent=function(name,token)
         if selectedContent(name) then return true end
