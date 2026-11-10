@@ -29,7 +29,7 @@ end
 report("Downloading script...")
 local ok, err = xpcall(function()
     assert(type(loadstring) == "function", "This environment does not provide loadstring")
-    local source = game:HttpGet("https://raw.githubusercontent.com/koviescobar77-design/Yozakura/60653dc707be06082b17937e6d5ba1c481112cf7/loader_lobby_mission.lua")
+    local source = game:HttpGet("https://raw.githubusercontent.com/koviescobar77-design/Yozakura/37bc0e369616c829d05bfd22d3b1a97a717da854/loader_lobby_mission.lua")
     assert(type(source) == "string" and #source > 0, "Empty download")
     local chunk, compileError = loadstring(source, "@Yozakura/loader_lobby_mission.lua")
     assert(chunk, compileError)
