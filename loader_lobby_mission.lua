@@ -19,10 +19,10 @@ assert(not pg:FindFirstChild("tekkit") and not pg:FindFirstChild("YozakuraFamily
 local function fetch(name)
     local url=name=="AOTR_main_menu.lua" and "https://raw.githubusercontent.com/koviescobar77-design/Yozakura/a1741ecc89377ffd48c453e3241e1bb0a5823e0a/AOTR_main_menu.lua" or ROOT..name
     if name=="AOTR_lobby.lua" then
-        url="https://raw.githubusercontent.com/koviescobar77-design/Yozakura/e3b1ddf4f1976ea4a7a8e500e116779f31fc4e9e/AOTR_lobby.lua"
+        url="https://raw.githubusercontent.com/koviescobar77-design/Yozakura/6833e5e702d14cdedc9b75e97862b6384229e1ef/AOTR_lobby.lua"
     end
     if name=="AOTR_launch.lua" then
-        url="https://raw.githubusercontent.com/koviescobar77-design/Yozakura/65c9a20e847e929164c52fac905f887623935782/AOTR_launch.lua"
+        url="https://raw.githubusercontent.com/koviescobar77-design/Yozakura/a286f6412b3863fa59e9bc1af285493ed1b61027/AOTR_launch.lua"
     end
     local source=game:HttpGet(url)
     local chunk,err=loadstring(source,"@Yozakura/"..name)
