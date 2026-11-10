@@ -17,9 +17,9 @@ if type(bannerAsset) ~= "string" or bannerAsset == "" then
     local register = getcustomasset or getsynasset
     if type(register) == "function" and type(writefile) == "function" then
         local ok, result = pcall(function()
-            local file = "YozakuraSakura-754b2749.png"
+            local file = "YozakuraWide-7210bb10.png"
             if type(isfile) ~= "function" or not isfile(file) then
-                local bytes = game:HttpGet("https://raw.githubusercontent.com/koviescobar77-design/Yozakura/754b2749ae498b8a4dfecce59161ec28907eccf9/assets/yozakura-sakura.png")
+                local bytes = game:HttpGet("https://raw.githubusercontent.com/koviescobar77-design/Yozakura/7210bb1097e4546917519e1f7390c103038060c8/assets/yozakura-wide.png")
                 assert(bytes:sub(1, 8) == string.char(137, 80, 78, 71, 13, 10, 26, 10), "Invalid banner PNG")
                 writefile(file, bytes)
             end
@@ -74,7 +74,7 @@ local function sakura(image)
     if type(bannerAsset) == "string" and bannerAsset ~= "" then
         make("ImageLabel", art, {
             Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
-            Image = bannerAsset, ScaleType = Enum.ScaleType.Fit,
+            Image = bannerAsset, ScaleType = Enum.ScaleType.Crop,
             ZIndex = art.ZIndex + 1,
         })
         return
@@ -159,6 +159,16 @@ local function style(window, title)
                 if o:IsA("UIStroke") then o.Color = tint(o.Color) end
                 if o:IsA("TextLabel") or o:IsA("TextButton") or o:IsA("TextBox") then
                     o.TextColor3 = tint(o.TextColor3)
+                    -- Remove only the small FREE / AOTR subtitle beneath the brand.
+                    local text = plain(o.Text)
+                    local dy = o.AbsolutePosition.Y - title.AbsolutePosition.Y
+                    local dx = o.AbsolutePosition.X - title.AbsolutePosition.X
+                    if o:IsA("TextLabel") and dy > 0 and dy <= 55
+                        and dx >= -10 and dx <= 150
+                        and (text == "free" or text == "aotr"
+                            or (text:find("free", 1, true) and text:find("aotr", 1, true))) then
+                        o.Visible = false
+                    end
                     if isTitle(o) then o.Text = "Yozakura"; o.TextColor3 = pink end
                     -- Limit Chinese-text removal to noninteractive labels beside the title.
                     if o:IsA("TextLabel") and hasCJK(o.Text)
