@@ -174,19 +174,28 @@ function L.new(a)
         ok,err=waitFor(function()return a.stage()=="modifiers"end,5,token); if not ok then return false,err end
         local names={}
         for _,name in ipairs(L.modifiers) do names[#names+1]=name end
+        local unresolved={}
         for _,name in ipairs(names) do
             if not a.valid(token) then return false,"Cancelled" end
             local desired=c.modifiers[name]==true
-            local state,reason=a.modifier(name)
-            if state==nil then
-                -- Missing unchecked modifiers may not exist in a particular game mode.
-                if reason~="missing" or desired then return false,"Cannot verify modifier: "..name end
-            elseif state~=desired then
-                a.status("Modifier "..name..": "..(desired and "ON" or "OFF"))
-                ok,err=a.toggleModifier(name,token); if not ok then return false,err end
-                ok,err=waitFor(function()return a.modifier(name)==desired end,3,token)
-                if not ok then return false,"Modifier change not confirmed: "..name end
+            if a.prepareModifier then
+                ok,err=a.prepareModifier(name,token)
+                if not ok and desired then return false,err end
             end
+            local state,reason=a.modifier(name)
+            if state==nil and not desired then
+                if reason~="missing" then unresolved[#unresolved+1]=name end
+            elseif state==nil or state~=desired then
+                a.status("Clicking checkbox: "..name.." -> "..(desired and "ON" or "OFF"))
+                ok,err=a.toggleModifier(name,token,state==nil)
+                if not ok then return false,err end
+                local confirmed=waitFor(function()return a.modifier(name)==desired end,3,token)
+                if not a.valid(token) then return false,"Cancelled" end
+                if not confirmed then unresolved[#unresolved+1]=name end
+            end
+        end
+        if #unresolved>0 then
+            return false,"Checkboxes processed; verify selection state: "..table.concat(unresolved,", ").." · Scan UI"
         end
         -- Recheck every requested modifier before leaving the panel and starting.
         for _,name in ipairs(L.modifiers) do
