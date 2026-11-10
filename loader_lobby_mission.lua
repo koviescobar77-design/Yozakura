@@ -17,7 +17,7 @@ assert(pg,"PlayerGui unavailable")
 assert(not pg:FindFirstChild("tekkit") and not pg:FindFirstChild("YozakuraFamilyMenu"),
     "Rejoin first: an older Yozakura script is already loaded")
 local function fetch(name)
-    local url=name=="AOTR_main_menu.lua" and "https://raw.githubusercontent.com/koviescobar77-design/Yozakura/baf0bb331138203d986f997e217bd049ebbdda66/AOTR_main_menu.lua" or ROOT..name
+    local url=name=="AOTR_main_menu.lua" and "https://raw.githubusercontent.com/koviescobar77-design/Yozakura/a1741ecc89377ffd48c453e3241e1bb0a5823e0a/AOTR_main_menu.lua" or ROOT..name
     local source=game:HttpGet(url)
     local chunk,err=loadstring(source,"@Yozakura/"..name)
     assert(chunk,err)
@@ -39,6 +39,7 @@ end
 local ctx
 local modeDetail="Waiting for game UI"
 local cachedMode,modeAt="unknown",-math.huge
+local menuRecognized=false
 local function bladeCounter(o)
     if not o or not (o:IsA("TextLabel") or o:IsA("TextButton") or o:IsA("TextBox"))
         or o.Name:lower()~="sets" then return false end
@@ -71,12 +72,20 @@ local function mode()
     if ctx and ctx.teleporting then modeDetail="Teleporting"; return "transition" end
     if os.clock()-modeAt<0.15 then return cachedMode end
     local tabs,menu,bladeVisible={},false,false
+    local pickerLobby,pickerTrade=false,false
     local names={["gear up"]=true,quests=true,equipment=true,inventory=true,market=true,
         rankings=true,regiment=true,battlepass=true}
     for _,o in ipairs(pg:GetDescendants()) do
         if bladeCounter(o) and visible(o) then bladeVisible=true end
+        if visible(o) then
+            local name=R.clean(o.Name)
+            if name=="lobby" then pickerLobby=true end
+            if name=="trade" then pickerTrade=true end
+        end
         if (o:IsA("TextLabel") or o:IsA("TextButton")) and visible(o) then
             local value=R.clean(o.Text)
+            if value=="lobby" then pickerLobby=true end
+            if value=="trade" then pickerTrade=true end
             if names[value] then tabs[value]=true end
             if value:find("tutorial",1,true) and value:find("gems",1,true) then menu=true end
             -- The destination picker after Play still belongs to the main menu.
@@ -90,6 +99,8 @@ local function mode()
             if value:gsub("[%s_:%-]",""):match("^slot[abc]$") or value=="customization" or value=="customisation" then menu=true end
         end
     end
+    -- Destination cards may use a Frame with sibling input objects, not a GuiButton ancestor.
+    if pickerLobby and pickerTrade then menu=true end
     local count=0
     for _ in pairs(tabs) do count=count+1 end
     local interface=pg:FindFirstChild("Interface")
@@ -102,9 +113,18 @@ local function mode()
     local battle=not bladeVisible and not lobby and not menu and titans and main and combatScene(titans)
     local mission=titans~=nil and (bladeVisible or battle==true)
     cachedMode=R.mode({lobby=count>=4,mission=mission,menu=menu})
+    if cachedMode=="menu" then
+        menuRecognized=true
+    elseif cachedMode=="lobby" or cachedMode=="mission" then
+        menuRecognized=false
+    elseif cachedMode=="unknown" and menuRecognized then
+        -- Preserve the existing menu session during the Play/popup/picker animation.
+        -- Click workers still require visible targets and cannot click an absent control.
+        cachedMode="menu"
+    end
     if cachedMode=="mission" then modeDetail="Mission detected"
     elseif cachedMode=="lobby" then modeDetail="Lobby detected"
-    elseif cachedMode=="menu" then modeDetail="Character slot menu detected"
+    elseif cachedMode=="menu" then modeDetail=(pickerLobby and pickerTrade) and "Lobby / Trade picker detected" or "Main menu active; waiting for next control"
     elseif cachedMode=="transition" then modeDetail="Waiting for the lobby/mission screen to settle"
     elseif titans then modeDetail="Titans found; waiting for mission HUD or active battle"
     else modeDetail="Waiting for lobby or mission UI" end
