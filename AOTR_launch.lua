@@ -51,6 +51,18 @@ function L.new(a)
         if not a.valid(token) then return false,"Cancelled" end
         return a.press(name,token)
     end
+    -- Called only by an explicit user request, not by an automatic retry.
+    function machine:ResumeParty(c)
+        if a.teleporting() or a.mission() then
+            return false,"Already loading a mission"
+        end
+        if a.stage()~="party" or not a.partyMatches or not a.partyMatches(c) then
+            return false,"Open the matching Waves party before resuming"
+        end
+        self.held=false
+        self.openedMode=c.mode
+        return true
+    end
     function machine:OpenMode(mode,token)
         if not contains(L.modes,mode) then return false,"Choose a mode" end
         if self.held then return false,"Previous launch outcome is unknown. Inspect the lobby, then Reset Holds." end
