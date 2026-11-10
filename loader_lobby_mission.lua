@@ -17,7 +17,7 @@ assert(pg,"PlayerGui unavailable")
 assert(not pg:FindFirstChild("tekkit") and not pg:FindFirstChild("YozakuraFamilyMenu"),
     "Rejoin first: an older Yozakura script is already loaded")
 local function fetch(name)
-    local url=name=="AOTR_main_menu.lua" and "https://raw.githubusercontent.com/koviescobar77-design/Yozakura/83d58d0e8d5943c6550fac46f378a92722bcd775/AOTR_main_menu.lua" or ROOT..name
+    local url=name=="AOTR_main_menu.lua" and "https://raw.githubusercontent.com/koviescobar77-design/Yozakura/364a1a6df7dae0d5ecc200965ce183dff7c0f877/AOTR_main_menu.lua" or ROOT..name
     local source=game:HttpGet(url)
     local chunk,err=loadstring(source,"@Yozakura/"..name)
     assert(chunk,err)
@@ -78,6 +78,7 @@ local function mode()
         if (o:IsA("TextLabel") or o:IsA("TextButton")) and visible(o) then
             local value=R.clean(o.Text)
             if names[value] then tabs[value]=true end
+            if value:find("tutorial",1,true) and value:find("gems",1,true) then menu=true end
             -- The destination picker after Play still belongs to the main menu.
             if value=="lobby" then
                 local p=o
