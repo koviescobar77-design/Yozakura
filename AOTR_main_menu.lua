@@ -53,7 +53,7 @@ end
 local panel=make("Frame",gui,{Size=UDim2.fromOffset(380,348),Position=UDim2.fromOffset(16,120),
     Active=true,BackgroundColor3=Color3.fromRGB(23,22,25),BorderSizePixel=0})
 round(panel)
-local title=make("TextLabel",panel,{Active=true,Text="Yozakura | Menu R5",Size=UDim2.new(1,-100,0,45),
+local title=make("TextLabel",panel,{Active=true,Text="Yozakura | Menu R6",Size=UDim2.new(1,-100,0,45),
     Position=UDim2.fromOffset(15,0),BackgroundTransparency=1,TextColor3=Color3.new(1,1,1),
     Font=Enum.Font.SourceSansBold,TextSize=22,TextXAlignment=Enum.TextXAlignment.Left})
 -- Mission-style grabbing: start from anywhere inside the panel.
@@ -148,28 +148,20 @@ local function findControl(expected,root)
     for o in pairs(candidates)do if result then return nil,"Multiple "..expected.." controls found" end;result=o end
     return result,expected.." is not visible"
 end
--- A non-interactive overlay remains visible while the panel is hidden for input.
-clickGui=make("ScreenGui",pg,{Name="YozakuraClickIndicator",ResetOnSpawn=false,
-    IgnoreGuiInset=true,DisplayOrder=10002})
-local clickBox=make("Frame",clickGui,{Visible=false,Active=false,
-    BackgroundColor3=Color3.fromRGB(35,145,255),BackgroundTransparency=0.85,BorderSizePixel=0})
-make("UIStroke",clickBox,{Color=Color3.fromRGB(35,145,255),Thickness=3})
+-- Attach the outline to the game control itself: no screen/inset conversion.
+local clickBox
 local clickSerial=0
-local function showClick(target,point)
+local function showClick(target)
     clickSerial=clickSerial+1
     local serial=clickSerial
-    local size=target.AbsoluteSize
-    local center=point or (target.AbsolutePosition+size/2)
-    if not point then
-        local ok,inset=pcall(function()return game:GetService("GuiService"):GetGuiInset()end)
-        local screen=target:FindFirstAncestorWhichIsA("ScreenGui")
-        if ok and screen and not screen.IgnoreGuiInset then center=center+inset end
-    end
-    clickBox.Position=UDim2.fromOffset(center.X-size.X/2,center.Y-size.Y/2)
-    clickBox.Size=UDim2.fromOffset(size.X,size.Y)
-    clickBox.Visible=true
+    if clickBox then clickBox:Destroy() end
+    clickBox=make("UIStroke",target,{Name="YozakuraClickIndicator",
+        ApplyStrokeMode=Enum.ApplyStrokeMode.Border,
+        Color=Color3.fromRGB(35,145,255),Thickness=3,Enabled=true})
+    clickGui=clickBox
+    local stroke=clickBox
     task.delay(0.8,function()
-        if alive and serial==clickSerial then clickBox.Visible=false end
+        if alive and serial==clickSerial then stroke.Enabled=false end
     end)
 end
 local function navigateActivate(target)
@@ -252,10 +244,19 @@ local function click(target,method)
         if alive then gui.Enabled=true end
         return false,"Navigation cancelled"
     end
-    local point=target.AbsolutePosition+target.AbsoluteSize/2
+    -- Use the rendered action label when a button includes decorative space.
+    local anchor=target
+    for _,child in ipairs(target:GetDescendants()) do
+        if (child:IsA("TextLabel") or child:IsA("TextButton")) and visible(child)
+            and (key(child.Text)=="play" or key(child.Text)=="lobby" or key(child.Text)=="select") then
+            anchor=child;break
+        end
+    end
+    local point=anchor.AbsolutePosition+anchor.AbsoluteSize/2
     local points={point}
+    local screen=target:FindFirstAncestorWhichIsA("ScreenGui")
     local ok,inset=pcall(function()return game:GetService("GuiService"):GetGuiInset()end)
-    if ok then table.insert(points,1,point+inset) end
+    if ok and screen and not screen.IgnoreGuiInset then points={point+inset} end
     local found
     for _,p in ipairs(points)do
         if clearPoint(target,p) then found=p;break end
@@ -268,12 +269,6 @@ local function click(target,method)
     local pressed=false
     local input
     local sent,err=pcall(function()
-        if method=="native" then
-            assert(type(mousemoveabs)=="function" and type(mouse1click)=="function","Native mouse functions unavailable")
-            mousemoveabs(found.X,found.Y)
-            mouse1click()
-            return
-        end
         input=game:GetService("VirtualInputManager")
         input:SendMouseMoveEvent(found.X,found.Y,game)
         input:SendMouseButtonEvent(found.X,found.Y,0,true,game,0)
@@ -283,12 +278,7 @@ local function click(target,method)
     end)
     if not sent and pressed then
         pcall(function()input:SendMouseButtonEvent(found.X,found.Y,0,false,game,0)end)
-    elseif not sent and valid() and token==generation
-        and type(mousemoveabs)=="function" and type(mouse1click)=="function" then
-        sent,err=pcall(function()
-            mousemoveabs(found.X,found.Y)
-            mouse1click()
-        end)
+
     end
     if alive then gui.Enabled=true end
     return sent or pressed,err or navError
@@ -404,7 +394,7 @@ local function selectSlot(letter)
         end
         local lobbyButton
         local attempts,failedMethods=0,0
-        local methods={"mouse","keyboard","MouseButton1Click","auto","native"}
+        local methods={"keyboard","MouseButton1Click","mouse","auto"}
         while running() do
             lobbyButton=findControl("Lobby")
             if lobbyButton then break end
@@ -471,7 +461,7 @@ button(panel,"Play",UDim2.fromOffset(15,198),UDim2.new(1,-30,0,40),function()
     if not busy then selectSlot(env.YozakuraSelectedSlot) end
 end)
 button(panel,"Stop Automation",UDim2.fromOffset(15,246),UDim2.new(1,-30,0,40),function()
-    generation=generation+1;busy=false;restoreNavigation();clickSerial=clickSerial+1;clickBox.Visible=false;report("Paused — press Play to start")
+    generation=generation+1;busy=false;restoreNavigation();clickSerial=clickSerial+1;if clickBox then clickBox.Enabled=false end;report("Paused — press Play to start")
 end)
 -- Capture before scheduling so Stop or a slot click cancels this initial dispatch.
 local initialGeneration=generation
