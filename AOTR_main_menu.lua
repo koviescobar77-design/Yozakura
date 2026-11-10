@@ -53,7 +53,7 @@ end
 local panel=make("Frame",gui,{Size=UDim2.fromOffset(380,348),Position=UDim2.fromOffset(16,120),
     Active=true,BackgroundColor3=Color3.fromRGB(23,22,25),BorderSizePixel=0})
 round(panel)
-local title=make("TextLabel",panel,{Active=true,Text="Yozakura | Menu R6",Size=UDim2.new(1,-100,0,45),
+local title=make("TextLabel",panel,{Active=true,Text="Yozakura | Menu R7",Size=UDim2.new(1,-100,0,45),
     Position=UDim2.fromOffset(15,0),BackgroundTransparency=1,TextColor3=Color3.new(1,1,1),
     Font=Enum.Font.SourceSansBold,TextSize=22,TextXAlignment=Enum.TextXAlignment.Left})
 -- Mission-style grabbing: start from anywhere inside the panel.
@@ -393,8 +393,7 @@ local function selectSlot(letter)
             return
         end
         local lobbyButton
-        local attempts,failedMethods=0,0
-        local methods={"keyboard","MouseButton1Click","mouse","auto"}
+        local attempts=0
         while running() do
             lobbyButton=findControl("Lobby")
             if lobbyButton then break end
@@ -403,21 +402,15 @@ local function selectSlot(letter)
             play=findControl("Play")
             if not play then break end
             attempts=attempts+1
-            local method=methods[(attempts-1)%#methods+1]
-            local sent,message=click(play,method)
+            -- Exactly the same activation path used by the slot SELECT button.
+            local sent,message=click(play)
             if not running()then return end
-            print("[Yozakura Menu] Play #"..attempts.." ["..method.."] "..(sent and "sent, not yet confirmed" or tostring(message)).." | "..play:GetFullName())
-            if sent then
-                failedMethods=0
-                report("Play #"..attempts.." ["..method.."] sent; waiting for screen change")
-            else
-                failedMethods=failedMethods+1
-                report("Play #"..attempts.." ["..method.."]: "..tostring(message))
-                if failedMethods>=#methods then
-                    report("Input unavailable: "..tostring(message)..". Check console [Yozakura Menu].")
-                    return
-                end
+            print("[Yozakura Menu] Play #"..attempts.." [slot activation] "..(sent and "sent, not yet confirmed" or tostring(message)).." | "..play:GetFullName())
+            if not sent then
+                report("Play: "..tostring(message))
+                return
             end
+            report("Play #"..attempts.." [slot activation] sent; waiting for screen change")
             -- Poll during the one-second interval so Stop/loading cancels promptly.
             local nextClick=os.clock()+1
             waitFor(function()
