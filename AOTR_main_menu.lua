@@ -62,7 +62,7 @@ end
 local panel=make("Frame",gui,{Size=UDim2.fromOffset(380,348),Position=UDim2.fromOffset(16,120),
     Active=true,BackgroundColor3=Color3.fromRGB(23,22,25),BorderSizePixel=0})
 round(panel)
-local title=make("TextLabel",panel,{Active=true,Text="Yozakura | Menu R10",Size=UDim2.new(1,-100,0,45),
+local title=make("TextLabel",panel,{Active=true,Text="Yozakura | Menu R11",Size=UDim2.new(1,-100,0,45),
     Position=UDim2.fromOffset(15,0),BackgroundTransparency=1,TextColor3=Color3.new(1,1,1),
     Font=Enum.Font.SourceSansBold,TextSize=22,TextXAlignment=Enum.TextXAlignment.Left})
 -- Mission-style grabbing: start from anywhere inside the panel.
@@ -208,6 +208,9 @@ local function clearPoint(target,p)
     for _,hit in ipairs(hits) do
         if hit==target or hit:IsDescendantOf(target) then return true end
         local own=hit:IsDescendantOf(gui) or (clickGui and hit:IsDescendantOf(clickGui))
+        if hit:IsDescendantOf(gui) and (hit:IsA("GuiButton") or hit.Active) then
+            return false -- Move the panel if it covers the game button; never hide it.
+        end
         local artwork=selection and (hit==selection or hit:IsDescendantOf(selection))
         if not own and not artwork and visible(hit)
             and (hit:IsA("GuiButton") or hit:IsA("TextBox") or hit.Active) then
@@ -268,8 +271,7 @@ local function click(target,method)
             task.wait(0.05)
         until os.clock()-stableSince>=0.3 and os.clock()>=autoMouse.nextAt
         if not current() then error("Auto-click cancelled") end
-        -- Hide only our panel for hit testing; the border stays on the game button.
-        gui.Enabled=false
+        -- Keep Yozakura visible and usable throughout the click.
         task.wait()
         if not current() then error("Auto-click cancelled") end
         if (target.AbsolutePosition-position).Magnitude>1
@@ -293,7 +295,6 @@ local function click(target,method)
     end)
     releaseMouse()
     if autoMouse.owner==owner then autoMouse.owner=nil end
-    if alive then gui.Enabled=true end
     return sent,err or navError
 end
 local function slotName(o)
