@@ -17,7 +17,7 @@ assert(pg,"PlayerGui unavailable")
 assert(not pg:FindFirstChild("tekkit") and not pg:FindFirstChild("YozakuraFamilyMenu"),
     "Rejoin first: an older Yozakura script is already loaded")
 local function fetch(name)
-    local url=name=="AOTR_main_menu.lua" and "https://raw.githubusercontent.com/koviescobar77-design/Yozakura/2cca886107e950e2888171828408eecb2a1983cd/AOTR_main_menu.lua" or ROOT..name
+    local url=name=="AOTR_main_menu.lua" and "https://raw.githubusercontent.com/koviescobar77-design/Yozakura/9ff06d45a98eaee2506cdd84363a47aa8deda5cb/AOTR_main_menu.lua" or ROOT..name
     local source=game:HttpGet(url)
     local chunk,err=loadstring(source,"@Yozakura/"..name)
     assert(chunk,err)
