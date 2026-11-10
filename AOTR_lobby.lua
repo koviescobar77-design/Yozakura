@@ -1,4 +1,4 @@
--- Yozakura Lobby R16: mission setup, modifiers and countdown.
+-- Yozakura Lobby R17: mission setup, modifiers and countdown.
 -- Called by loader_lobby_mission.lua with the shared context and rules.
 local ctx, R, Launch = ...
 assert(Launch, "R2 requires the updated loader")
@@ -112,7 +112,7 @@ local function text(parent, label, pos, size)
         TextColor3=Color3.new(1,1,1), Font=Enum.Font.SourceSansBold, TextSize=17,
         TextXAlignment=Enum.TextXAlignment.Left})
 end
-local header = text(panel, "Yozakura  |  Lobby R16", UDim2.fromOffset(14,6), UDim2.fromOffset(380,36))
+local header = text(panel, "Yozakura  |  Lobby R17", UDim2.fromOffset(14,6), UDim2.fromOffset(380,36))
 header.TextSize = 27
 local status = text(panel, "Paused · select options, then Start", UDim2.fromOffset(146,430), UDim2.fromOffset(490,40))
 status.TextWrapped = true; status.TextSize = 15
@@ -460,7 +460,7 @@ local function pause(seconds,token)
     until os.clock()>=deadline
     return true
 end
-local function click(b,token,physical)
+local function click(b,token,hitRoot)
     if not valid(token) or not b or not visible(b) then return false,"Target hidden or cancelled" end
     -- Scroll the actual game control into view, including Tipping Point below the fold.
     local ancestor=b.Parent
@@ -525,7 +525,8 @@ local function click(b,token,physical)
         local accepted=false
         local blocker
         for _,hit in ipairs(pg:GetGuiObjectsAtPosition(guiPoint.X,guiPoint.Y)) do
-            if hit==b or hit:IsDescendantOf(b) then accepted=true;break end
+            if hit==b or hit:IsDescendantOf(b)
+                or (hitRoot and (hit==hitRoot or hit:IsDescendantOf(hitRoot))) then accepted=true;break end
             -- Ignore passive artwork, but respect real controls in front of the target.
             if hit.Visible and (hit:IsA("GuiButton") or hit:IsA("TextBox") or hit.Active)
                 and not b:IsDescendantOf(hit) then blocker=hit;break end
@@ -1051,20 +1052,61 @@ local function modifierRow(name)
     local matches=exact(root,{name})
     if #matches==0 then return nil,nil,"missing" end
     if #matches~=1 then return nil,nil,"ambiguous" end
-    local p=matches[1].Parent
-    for _=1,6 do
+    local heading=matches[1]
+    local p=heading.Parent
+    for _=1,8 do
         if not p or p==root then break end
         local other=0
-        for _,known in ipairs(Launch.modifiers) do if #exact(p,{known})>0 then other=other+1 end end
+        for _,known in ipairs(Launch.modifiers) do
+            if #exact(p,{known})>0 then other=other+1 end
+        end
         if other>1 then break end
+        -- The actual checkbox is the square to the left of the modifier title.
+        local box
+        for _,o in ipairs(p:GetDescendants()) do
+            if o:IsA("GuiObject") and visible(o) and o~=heading then
+                local pos,size=o.AbsolutePosition,o.AbsoluteSize
+                local hp,hs=heading.AbsolutePosition,heading.AbsoluteSize
+                local ratio=size.X/math.max(1,size.Y)
+                if size.X>=12 and size.Y>=12 and ratio>=0.75 and ratio<=1.3
+                    and pos.X+size.X<=hp.X+8
+                    and pos.Y<=hp.Y+hs.Y and pos.Y+size.Y>=hp.Y then
+                    if not box or size.X*size.Y>box.AbsoluteSize.X*box.AbsoluteSize.Y then box=o end
+                end
+            end
+        end
+        if box then return p,box end
         local buttons={}
         if p:IsA("GuiButton") then buttons[#buttons+1]=p end
-        for _,o in ipairs(p:GetDescendants())do if o:IsA("GuiButton") and visible(o) then buttons[#buttons+1]=o end end
+        for _,o in ipairs(p:GetDescendants())do
+            if o:IsA("GuiButton") and visible(o) then buttons[#buttons+1]=o end
+        end
         if #buttons==1 then return p,buttons[1] end
         p=p.Parent
     end
     return nil,nil,"unreadable"
 end
+local function prepareModifier(name,token)
+    local row,box,reason=modifierRow(name)
+    if not box then return false,"Modifier row "..name..": "..tostring(reason) end
+    local ancestor=box.Parent
+    while ancestor and ancestor~=pg do
+        if ancestor:IsA("ScrollingFrame") then
+            local delta=box.AbsolutePosition.Y-ancestor.AbsolutePosition.Y
+            local height=ancestor.AbsoluteSize.Y
+            if delta<8 or delta+box.AbsoluteSize.Y>height-8 then
+                report("Scrolling to "..name)
+                local desired=ancestor.CanvasPosition.Y+delta-(height-box.AbsoluteSize.Y)/2
+                local maximum=math.max(0,ancestor.AbsoluteCanvasSize.Y-height)
+                ancestor.CanvasPosition=Vector2.new(ancestor.CanvasPosition.X,math.clamp(desired,0,maximum))
+                if not pause(0.3,token) then return false,"Cancelled" end
+            end
+        end
+        ancestor=ancestor.Parent
+    end
+    return true
+end
+local modifierAttempts={}
 local function modifierState(name)
     local row,b,reason=modifierRow(name)
     if not row then return nil,reason end
@@ -1076,10 +1118,15 @@ local function modifierState(name)
     for _,o in ipairs(row:GetDescendants())do
         local n=R.clean(o.Name)
         if (n=="selected" or n=="checked" or n=="enabled") and o:IsA("BoolValue") then take(o.Value) end
-        if (n=="checkmark" or n=="tick" or n=="check" or n=="selected") and o:IsA("GuiObject") then
+        if (n=="checkmark" or n=="tick" or n=="check" or n=="selected" or n=="checked") and o:IsA("GuiObject") then
             local shown=o.Visible
             if o:IsA("ImageLabel") or o:IsA("ImageButton") then shown=shown and o.Image~="" and o.ImageTransparency<1 end
             take(shown)
+        end
+    end
+    for _,o in ipairs(b:GetDescendants()) do
+        if o:IsA("TextLabel") or o:IsA("TextButton") then
+            if o.Text=="✓" or o.Text=="✔" or o.Text=="☑" then take(o.Visible and o.TextTransparency<1) end
         end
     end
     for _,item in ipairs(labels(row))do
@@ -1189,10 +1236,17 @@ launchMachine=Launch.new({
         return waitUI(function()return setupPanel()~=nil end,token)
     end,
     modifier=modifierState,
-    toggleModifier=function(name,token)
-        local _,b=modifierRow(name)
+    prepareModifier=prepareModifier,
+    toggleModifier=function(name,token,unverified)
+        local prepared,message=prepareModifier(name,token)
+        if not prepared then return false,message end
+        local row,b=modifierRow(name)
         if not b then return false,"Modifier button unreadable: "..name end
-        return click(b,token),"Modifier input unavailable: "..name
+        if unverified and modifierAttempts[b] then
+            return false,"Already clicked "..name.."; checkbox state still unreadable"
+        end
+        if unverified then modifierAttempts[b]=true end
+        return click(b,token,row)
     end,
     partyFingerprint=function()
         local p=partyPanel()
