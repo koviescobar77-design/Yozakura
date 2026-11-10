@@ -24,6 +24,9 @@ local function fetch(name)
     if name=="AOTR_launch.lua" then
         url="https://raw.githubusercontent.com/koviescobar77-design/Yozakura/ba1ce308476d6792cd3da8ba128f3257818d000f/AOTR_launch.lua"
     end
+    if name=="AOTR_wave.lua" or name=="AOTR_mission_isolated.lua" then
+        url="https://raw.githubusercontent.com/koviescobar77-design/Yozakura/e947e7e5bfac34253e73356228a6c44eb3d203e9/"..name
+    end
     local source=game:HttpGet(url)
     local chunk,err=loadstring(source,"@Yozakura/"..name)
     assert(chunk,err)
@@ -168,6 +171,7 @@ local controller=newController({
             assert(session.isCurrent(), "Mode changed during lobby setup")
             return lobbyModule(session,R,launch)
         end
+        session.waveFactory=module("AOTR_wave.lua")()
         return module("AOTR_mission_isolated.lua")(session)
     end,
 })
