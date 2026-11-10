@@ -62,7 +62,7 @@ end
 local panel=make("Frame",gui,{Size=UDim2.fromOffset(380,348),Position=UDim2.fromOffset(16,120),
     Active=true,BackgroundColor3=Color3.fromRGB(23,22,25),BorderSizePixel=0})
 round(panel)
-local title=make("TextLabel",panel,{Active=true,Text="Yozakura | Menu R9",Size=UDim2.new(1,-100,0,45),
+local title=make("TextLabel",panel,{Active=true,Text="Yozakura | Menu R10",Size=UDim2.new(1,-100,0,45),
     Position=UDim2.fromOffset(15,0),BackgroundTransparency=1,TextColor3=Color3.new(1,1,1),
     Font=Enum.Font.SourceSansBold,TextSize=22,TextXAlignment=Enum.TextXAlignment.Left})
 -- Mission-style grabbing: start from anywhere inside the panel.
@@ -277,13 +277,11 @@ local function click(target,method)
             error("Blue-box target moved before the click")
         end
         if size.X<4 or size.Y<4 then error("Blue-box target is too small") end
-        local point=position+size/2
-        local screen=target:FindFirstAncestorWhichIsA("ScreenGui")
-        if screen and not screen.IgnoreGuiInset then
-            point=point+game:GetService("GuiService"):GetGuiInset()
-        end
-        -- Never click through a popup or another interactive control.
-        if not clearPoint(target,point) then error("Blue box is covered; click cancelled") end
+        -- AbsolutePosition and GUI hit testing use the inset-relative origin.
+        -- Mouse injection needs screen coordinates, even for IgnoreGuiInset GUIs.
+        local guiPoint=position+size/2
+        if not clearPoint(target,guiPoint) then error("Blue box is covered; click cancelled") end
+        local point=guiPoint+game:GetService("GuiService"):GetGuiInset()
         autoMouse.input=game:GetService("VirtualInputManager")
         autoMouse.point=point
         autoMouse.input:SendMouseMoveEvent(point.X,point.Y,game)
@@ -460,30 +458,32 @@ local function selectSlot(letter)
         local lobbyButton
         local attempts=0
         while running() do
+            -- Popup takes priority. Never keep pressing Play behind it.
             if not clearTutorial() then return end
+            if not running() then return end
             lobbyButton=findControl("Lobby")
             if lobbyButton then break end
-            -- Resolve again each attempt: the game may replace its Play instance.
-            -- Never click the lobby's Play button after the menu/slot screen changes.
             play=findControl("Play")
-            if not play then break end
-            attempts=attempts+1
-            -- Physical input at the outlined Play button only.
-            local sent,message=click(play,"mouse")
-            if not running()then return end
-            print("[Yozakura Menu] Play #"..attempts.." [blue-box mouse] "..(sent and "sent, not yet confirmed" or tostring(message)).." | "..play:GetFullName())
-            if not sent then
-                report("Play: "..tostring(message))
-                return
+            if play then
+                attempts=attempts+1
+                local sent,message=click(play,"mouse")
+                if not running() then return end
+                if sent then
+                    report("Play #"..attempts.." — auto-clicking until tutorial / Lobby appears")
+                else
+                    report("Play #"..attempts.." retry: "..tostring(message))
+                end
+            else
+                report("Waiting for Play / tutorial / Lobby; auto-clicker still active")
             end
-            report("Play #"..attempts.." [blue-box mouse] sent; waiting for screen change")
-            -- Poll during the one-second interval so Stop/loading cancels promptly.
+            -- Keep retrying after blocked input, movement, or temporary UI replacement.
+            -- Only an observed destination, Stop, or leaving menu ends this loop.
             local nextClick=os.clock()+1
-            waitFor(function()
-                lobbyButton=findControl("Lobby")
-                return lobbyButton or (not visible(play) and not findControl("Play")) or os.clock()>=nextClick
-            end,2)
-            if lobbyButton or not findControl("Play") then break end
+            repeat
+                if not running() then return end
+                if tutorialOffer() or findControl("Lobby") then break end
+                task.wait(0.1)
+            until os.clock()>=nextClick
         end
         -- Some menus open a destination selector after Play.
         if running() then
