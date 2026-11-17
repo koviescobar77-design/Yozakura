@@ -1,4 +1,4 @@
--- Yozakura • Tap Sim Reborn • revision 1
+-- Yozakura • Tap Sim Reborn • revision 2
 -- Standalone UI. Does not change loader.lua.
 -- Auto Tap calls a selected existing GUI button's connected callback.
 -- Requires getconnections; compatibility with the game's current UI is unverified.
@@ -37,71 +37,111 @@ local function connect(signal, fn)
     table.insert(connections,c)
     return c
 end
-local window = make("Frame",gui,{Size=UDim2.fromOffset(480,470),
-    Position=UDim2.fromScale(0.5,0.5),AnchorPoint=Vector2.new(0.5,0.5),
-    BackgroundColor3=Color3.fromRGB(27,27,43),BorderSizePixel=0,ClipsDescendants=true})
-round(window,18)
-local scale = make("UIScale",window,{Scale=1})
-local border = make("UIStroke",window,{Color=themes[1][2],Transparency=0.55,Thickness=1.2})
-local top = make("Frame",window,{Size=UDim2.new(1,0,0,100),BorderSizePixel=0,
-    BackgroundColor3=Color3.new(1,1,1),Active=true})
-local gradient = make("UIGradient",top,{Color=ColorSequence.new(themes[1][2],themes[1][3]),Rotation=18})
-make("TextLabel",top,{Position=UDim2.fromOffset(22,16),Size=UDim2.fromOffset(345,31),
-    BackgroundTransparency=1,Text="YOZAKURA  /  BLOOM",Font=Enum.Font.GothamBold,
-    TextSize=22,TextColor3=Color3.fromRGB(35,32,53),TextXAlignment=Enum.TextXAlignment.Left})
-make("TextLabel",top,{Position=UDim2.fromOffset(23,51),Size=UDim2.fromOffset(350,22),
-    BackgroundTransparency=1,Text="Tap Sim Reborn   •   soft colors, cozy grinding",
-    Font=Enum.Font.Gotham,TextSize=12,TextColor3=Color3.fromRGB(55,46,73),
-    TextXAlignment=Enum.TextXAlignment.Left})
--- Static blossoms: no flashing or constant animation.
-for i=1,9 do
-    local flower = make("TextLabel",top,{Position=UDim2.fromOffset(265+i*21,64-(i%3)*24),
-        Size=UDim2.fromOffset(26,26),BackgroundTransparency=1,Text="✿",
-        Font=Enum.Font.Gotham,TextSize=18+(i%3)*4,TextColor3=white,TextTransparency=0.62})
+-- Blank sidebar is reserved for the owner's future navigation labels.
+local window=make("Frame",gui,{Size=UDim2.fromOffset(720,560),Position=UDim2.fromScale(.5,.5),
+    AnchorPoint=Vector2.new(.5,.5),BackgroundColor3=Color3.fromRGB(25,23,34),BorderSizePixel=0,ClipsDescendants=true})
+round(window,16)
+local scale=make("UIScale",window,{Scale=1})
+local border=make("UIStroke",window,{Color=themes[1][2],Transparency=.6})
+local rail=make("Frame",window,{Name="ReservedSidebar",Position=UDim2.fromOffset(0,56),
+    Size=UDim2.new(0,140,1,-56),BackgroundColor3=Color3.fromRGB(29,25,38),BorderSizePixel=0})
+-- Intentionally no menu labels, menu icons, or placeholder actions.
+local top=make("Frame",window,{Size=UDim2.new(1,0,0,56),BackgroundColor3=Color3.fromRGB(38,30,45),BorderSizePixel=0,Active=true})
+local gradient=make("UIGradient",top,{Color=ColorSequence.new(themes[1][2],themes[1][3]),Transparency=NumberSequence.new(.78)})
+local function text(parent,value,x,y,w,h,size,color)
+    return make("TextLabel",parent,{Text=value,Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(w,h),
+        BackgroundTransparency=1,TextColor3=color or white,Font=Enum.Font.Gotham,TextSize=size or 13,
+        TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd})
 end
-local function button(parent,text,pos,size)
-    local b=make("TextButton",parent,{Text=text,Position=pos,Size=size,
-        BackgroundColor3=Color3.fromRGB(48,47,68),TextColor3=white,
-        Font=Enum.Font.GothamMedium,TextSize=13,BorderSizePixel=0,AutoButtonColor=true})
+text(top,"Yozakura",14,10,124,34,20,themes[1][2])
+text(top,"Home",156,6,380,28,22,white)
+text(top,"Tap Sim Reborn  /  Session overview",157,34,380,16,10,muted)
+local function button(parent,value,pos,size)
+    local b=make("TextButton",parent,{Text=value,Position=pos,Size=size,BackgroundColor3=Color3.fromRGB(48,42,59),
+        TextColor3=white,Font=Enum.Font.GothamMedium,TextSize=13,BorderSizePixel=0})
     round(b,10)
     return b
 end
 local minimize=button(top,"–",UDim2.new(1,-76,0,14),UDim2.fromOffset(28,28))
 local close=button(top,"×",UDim2.new(1,-40,0,14),UDim2.fromOffset(28,28))
-local body=make("Frame",window,{Position=UDim2.fromOffset(20,115),
-    Size=UDim2.new(1,-40,1,-130),BackgroundTransparency=1})
-local function label(text,y,height)
-    return make("TextLabel",body,{Position=UDim2.fromOffset(0,y),
-        Size=UDim2.new(1,0,0,height or 22),BackgroundTransparency=1,
-        Text=text,Font=Enum.Font.Gotham,TextSize=12,TextColor3=muted,
-        TextXAlignment=Enum.TextXAlignment.Left,TextWrapped=true})
+local body=make("ScrollingFrame",window,{Position=UDim2.fromOffset(156,66),Size=UDim2.new(1,-170,1,-78),
+    BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=3,ScrollBarImageColor3=themes[1][2],
+    CanvasSize=UDim2.fromOffset(0,626)})
+local function card(y,h,color)
+    local c=make("Frame",body,{Position=UDim2.fromOffset(0,y),Size=UDim2.new(1,-6,0,h),
+        BackgroundColor3=color or Color3.fromRGB(35,29,42),BorderSizePixel=0,ClipsDescendants=true})
+    round(c,12)
+    make("UIStroke",c,{Color=themes[1][2],Transparency=.8})
+    return c
 end
-label("FARMING",0)
-local picker=button(body,"Select game tap button  ›",UDim2.fromOffset(0,28),UDim2.new(1,0,0,42))
-local toggle=button(body,"Auto Tap   •   OFF",UDim2.fromOffset(0,80),UDim2.new(0.65,-5,0,42))
-local speed=button(body,"0.4s / tap",UDim2.new(0.65,5,0,80),UDim2.new(0.35,-5,0,42))
-label("APPEARANCE",140)
-local themeButtons={}
+local banner=card(0,112,Color3.fromRGB(221,199,220))
+local bannerImage=make("ImageLabel",banner,{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,
+    ScaleType=Enum.ScaleType.Crop,Image=""})
+local bannerNotice=text(banner,"Loading Sakura artwork…",14,42,480,26,12,Color3.fromRGB(77,57,83))
+local profile=card(122,84)
+local avatar=make("ImageLabel",profile,{Position=UDim2.fromOffset(14,12),Size=UDim2.fromOffset(60,60),
+    BackgroundColor3=Color3.fromRGB(57,43,65),Image=""})
+round(avatar,30)
+make("UIStroke",avatar,{Color=themes[1][2],Thickness=2})
+text(profile,player.DisplayName,90,12,300,25,18,white)
+text(profile,"@"..player.Name,90,39,300,18,11,muted)
+text(profile,"TAP SIM REBORN",90,60,300,15,10,themes[1][2])
+local session=card(216,76)
+text(session,"✿  SESSION",14,7,450,22,14,themes[1][2])
+local stats=text(session,"Session: 0s  •  Tap attempts: 0",14,37,490,25,14,white)
+local function label(value,y,h)
+    local l=text(body,value,2,y,526,h or 22,12,muted)
+    l.TextWrapped=true
+    l.TextTruncate=Enum.TextTruncate.None
+    return l
+end
+label("FARMING",306)
+local picker=button(body,"Select game tap button  ›",UDim2.fromOffset(0,334),UDim2.new(1,-6,0,38))
+local toggle=button(body,"Auto Tap   •   OFF",UDim2.fromOffset(0,382),UDim2.new(.65,-6,0,38))
+local speed=button(body,"0.4s / tap",UDim2.new(.65,4,0,382),UDim2.new(.35,-10,0,38))
+label("APPEARANCE",436)
 for i,t in ipairs(themes) do
-    local b=button(body,t[1],UDim2.new((i-1)*0.25,0,0,168),UDim2.new(0.25,-6,0,35))
+    local b=button(body,t[1],UDim2.new((i-1)*.25,0,0,464),UDim2.new(.25,-6,0,34))
     b.TextColor3=t[2]
-    themeButtons[i]=b
     connect(b.Activated,function()
         themeIndex=i
         gradient.Color=ColorSequence.new(t[2],t[3])
         border.Color=t[2]
+        body.ScrollBarImageColor3=t[2]
         toggle.TextColor3=running and t[2] or white
     end)
 end
-local status=label("Ready • select the game's tap button first.",221,44)
-local stats=label("Session: 0s  •  Tap attempts: 0",275,24)
-label("Right Shift: hide/show   •   drag the banner to move",310,22)
-local menu=make("ScrollingFrame",window,{Visible=false,Position=UDim2.fromOffset(20,140),
-    Size=UDim2.new(1,-40,0,240),BackgroundColor3=Color3.fromRGB(36,35,54),
-    BorderSizePixel=0,ScrollBarThickness=4,AutomaticCanvasSize=Enum.AutomaticSize.Y,
-    CanvasSize=UDim2.new(),ZIndex=5})
+local status=label("Ready • select the game's tap button first.",512,48)
+label("Right Shift: hide/show  •  drag the top bar to move",580,24)
+local menu=make("ScrollingFrame",window,{Visible=false,Position=UDim2.fromOffset(156,136),
+    Size=UDim2.new(1,-176,0,240),BackgroundColor3=Color3.fromRGB(42,34,50),BorderSizePixel=0,
+    ScrollBarThickness=4,AutomaticCanvasSize=Enum.AutomaticSize.Y,CanvasSize=UDim2.new(),ZIndex=5})
 round(menu)
 make("UIListLayout",menu,{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder})
+task.spawn(function()
+    local ok,result=pcall(function()
+        return Players:GetUserThumbnailAsync(player.UserId,Enum.ThumbnailType.HeadShot,Enum.ThumbnailSize.Size150x150)
+    end)
+    if alive and ok then avatar.Image=result end
+end)
+task.spawn(function()
+    local env=type(getgenv)=="function" and getgenv() or _G
+    local override=env.YozakuraSakuraBannerAsset
+    local ok,result=pcall(function()
+        if type(override)=="string" and override~="" then return override end
+        local register=getcustomasset or getsynasset
+        assert(type(register)=="function" and type(writefile)=="function","Custom image support unavailable")
+        local path="Yozakura-SakuraLight-r2.jpg"
+        local bytes=game:HttpGet("https://raw.githubusercontent.com/koviescobar77-design/Yozakura/main/assets/sakura-light-banner.jpg")
+        assert(bytes:sub(1,2)==string.char(255,216),"Invalid banner download")
+        writefile(path,bytes)
+        return register(path)
+    end)
+    if not alive then return end
+    if ok then bannerImage.Image=result bannerNotice.Visible=false
+    else bannerNotice.Text="Sakura image unavailable on this executor."
+        warn("[Yozakura banner] "..tostring(result)) end
+end)
 local function stopped(message)
     running=false
     toggle.Text="Auto Tap   •   OFF"
@@ -191,8 +231,9 @@ local mini=false
 connect(minimize.Activated,function()
     mini=not mini
     body.Visible=not mini
+    rail.Visible=not mini
     menu.Visible=false
-    window.Size=UDim2.fromOffset(480,mini and 100 or 470)
+    window.Size=UDim2.fromOffset(720,mini and 56 or 560)
     minimize.Text=mini and "+" or "–"
 end)
 connect(UIS.InputBegan,function(input,processed)
@@ -207,8 +248,8 @@ end)
 connect(UIS.InputChanged,function(input)
     if dragging and (input.UserInputType==Enum.UserInputType.MouseMovement or input==dragging) then
         local delta=input.Position-dragStart
-        window.Position=UDim2.new(original.X.Scale,original.X.Offset+delta.X,
-            original.Y.Scale,original.Y.Offset+delta.Y)
+        window.Position=UDim2.new(original.X.Scale,original.X.Offset+delta.X/scale.Scale,
+            original.Y.Scale,original.Y.Offset+delta.Y/scale.Scale)
     end
 end)
 connect(UIS.InputEnded,function(input)
@@ -218,7 +259,7 @@ local function resize()
     local camera=workspace.CurrentCamera
     if camera then
         local v=camera.ViewportSize
-        scale.Scale=math.clamp(math.min((v.X-24)/480,(v.Y-40)/470),0.35,1)
+        scale.Scale=math.max(0.1, math.min((v.X-24)/720,(v.Y-40)/560,1))
     end
 end
 local lastCamera
