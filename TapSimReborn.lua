@@ -1,4 +1,4 @@
--- Yozakura • Tap Sim Reborn • revision 2
+-- Sakura • Tap Sim Reborn • revision 3
 -- Standalone UI. Does not change loader.lua.
 -- Auto Tap calls a selected existing GUI button's connected callback.
 -- Requires getconnections; compatibility with the game's current UI is unverified.
@@ -19,13 +19,14 @@ end
 local function round(obj, radius)
     make("UICorner", obj, {CornerRadius=UDim.new(0,radius or 12)})
 end
-local white = Color3.fromRGB(243,239,250)
-local muted = Color3.fromRGB(182,179,205)
+-- Deep plum text keeps the pastel surfaces readable.
+local white = Color3.fromRGB(81,48,70)
+local muted = Color3.fromRGB(119,82,106)
 local themes = {
-    {"Sakura", Color3.fromRGB(245,158,192), Color3.fromRGB(177,164,237)},
-    {"Lavender", Color3.fromRGB(190,171,245), Color3.fromRGB(144,195,238)},
-    {"Mint", Color3.fromRGB(143,218,192), Color3.fromRGB(152,194,238)},
-    {"Sky", Color3.fromRGB(149,205,240), Color3.fromRGB(196,177,239)},
+    {"Sakura", Color3.fromRGB(166,56,105), Color3.fromRGB(172,139,204)},
+    {"Lavender", Color3.fromRGB(120,75,161), Color3.fromRGB(192,156,218)},
+    {"Mint", Color3.fromRGB(48,118,103), Color3.fromRGB(164,213,197)},
+    {"Sky", Color3.fromRGB(66,107,151), Color3.fromRGB(177,199,230)},
 }
 local gui = make("ScreenGui",pg,{Name="YozakuraTapReborn",ResetOnSpawn=false,
     ZIndexBehavior=Enum.ZIndexBehavior.Sibling,DisplayOrder=50})
@@ -39,25 +40,27 @@ local function connect(signal, fn)
 end
 -- Blank sidebar is reserved for the owner's future navigation labels.
 local window=make("Frame",gui,{Size=UDim2.fromOffset(720,560),Position=UDim2.fromScale(.5,.5),
-    AnchorPoint=Vector2.new(.5,.5),BackgroundColor3=Color3.fromRGB(25,23,34),BorderSizePixel=0,ClipsDescendants=true})
+    AnchorPoint=Vector2.new(.5,.5),BackgroundColor3=Color3.fromRGB(255,243,248),BorderSizePixel=0,ClipsDescendants=true})
 round(window,16)
 local scale=make("UIScale",window,{Scale=1})
 local border=make("UIStroke",window,{Color=themes[1][2],Transparency=.6})
 local rail=make("Frame",window,{Name="ReservedSidebar",Position=UDim2.fromOffset(0,56),
-    Size=UDim2.new(0,140,1,-56),BackgroundColor3=Color3.fromRGB(29,25,38),BorderSizePixel=0})
+    Size=UDim2.new(0,140,1,-56),BackgroundColor3=Color3.fromRGB(249,226,238),BorderSizePixel=0})
 -- Intentionally no menu labels, menu icons, or placeholder actions.
-local top=make("Frame",window,{Size=UDim2.new(1,0,0,56),BackgroundColor3=Color3.fromRGB(38,30,45),BorderSizePixel=0,Active=true})
+local top=make("Frame",window,{Size=UDim2.new(1,0,0,56),BackgroundColor3=Color3.fromRGB(255,247,251),BorderSizePixel=0,Active=true})
 local gradient=make("UIGradient",top,{Color=ColorSequence.new(themes[1][2],themes[1][3]),Transparency=NumberSequence.new(.78)})
 local function text(parent,value,x,y,w,h,size,color)
     return make("TextLabel",parent,{Text=value,Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(w,h),
         BackgroundTransparency=1,TextColor3=color or white,Font=Enum.Font.Gotham,TextSize=size or 13,
         TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd})
 end
-text(top,"Yozakura",14,10,124,34,20,themes[1][2])
-text(top,"Home",156,6,380,28,22,white)
+local brand=text(top,"Sakura",14,6,124,40,30,themes[1][2])
+brand.Font=Enum.Font.Antique
+local homeTitle=text(top,"Home",156,6,380,28,24,white)
+homeTitle.Font=Enum.Font.Antique
 text(top,"Tap Sim Reborn  /  Session overview",157,34,380,16,10,muted)
 local function button(parent,value,pos,size)
-    local b=make("TextButton",parent,{Text=value,Position=pos,Size=size,BackgroundColor3=Color3.fromRGB(48,42,59),
+    local b=make("TextButton",parent,{Text=value,Position=pos,Size=size,BackgroundColor3=Color3.fromRGB(246,218,233),
         TextColor3=white,Font=Enum.Font.GothamMedium,TextSize=13,BorderSizePixel=0})
     round(b,10)
     return b
@@ -69,7 +72,7 @@ local body=make("ScrollingFrame",window,{Position=UDim2.fromOffset(156,66),Size=
     CanvasSize=UDim2.fromOffset(0,626)})
 local function card(y,h,color)
     local c=make("Frame",body,{Position=UDim2.fromOffset(0,y),Size=UDim2.new(1,-6,0,h),
-        BackgroundColor3=color or Color3.fromRGB(35,29,42),BorderSizePixel=0,ClipsDescendants=true})
+        BackgroundColor3=color or Color3.fromRGB(255,250,253),BorderSizePixel=0,ClipsDescendants=true})
     round(c,12)
     make("UIStroke",c,{Color=themes[1][2],Transparency=.8})
     return c
@@ -80,7 +83,7 @@ local bannerImage=make("ImageLabel",banner,{Size=UDim2.fromScale(1,1),Background
 local bannerNotice=text(banner,"Loading Sakura artwork…",14,42,480,26,12,Color3.fromRGB(77,57,83))
 local profile=card(122,84)
 local avatar=make("ImageLabel",profile,{Position=UDim2.fromOffset(14,12),Size=UDim2.fromOffset(60,60),
-    BackgroundColor3=Color3.fromRGB(57,43,65),Image=""})
+    BackgroundColor3=Color3.fromRGB(243,218,236),Image=""})
 round(avatar,30)
 make("UIStroke",avatar,{Color=themes[1][2],Thickness=2})
 text(profile,player.DisplayName,90,12,300,25,18,white)
@@ -107,6 +110,7 @@ for i,t in ipairs(themes) do
         themeIndex=i
         gradient.Color=ColorSequence.new(t[2],t[3])
         border.Color=t[2]
+        brand.TextColor3=t[2]
         body.ScrollBarImageColor3=t[2]
         toggle.TextColor3=running and t[2] or white
     end)
@@ -114,7 +118,7 @@ end
 local status=label("Ready • select the game's tap button first.",512,48)
 label("Right Shift: hide/show  •  drag the top bar to move",580,24)
 local menu=make("ScrollingFrame",window,{Visible=false,Position=UDim2.fromOffset(156,136),
-    Size=UDim2.new(1,-176,0,240),BackgroundColor3=Color3.fromRGB(42,34,50),BorderSizePixel=0,
+    Size=UDim2.new(1,-176,0,240),BackgroundColor3=Color3.fromRGB(255,240,248),BorderSizePixel=0,
     ScrollBarThickness=4,AutomaticCanvasSize=Enum.AutomaticSize.Y,CanvasSize=UDim2.new(),ZIndex=5})
 round(menu)
 make("UIListLayout",menu,{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder})
@@ -140,7 +144,7 @@ task.spawn(function()
     if not alive then return end
     if ok then bannerImage.Image=result bannerNotice.Visible=false
     else bannerNotice.Text="Sakura image unavailable on this executor."
-        warn("[Yozakura banner] "..tostring(result)) end
+        warn("[Sakura banner] "..tostring(result)) end
 end)
 local function stopped(message)
     running=false
