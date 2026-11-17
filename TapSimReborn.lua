@@ -1,4 +1,4 @@
--- Sakura • Tap Sim Reborn • revision 4
+-- Sakura • Tap Sim Reborn • revision 5
 -- Standalone UI. Does not change loader.lua.
 -- Auto Tap calls a selected existing GUI button's connected callback.
 -- Requires getconnections; compatibility with the game's current UI is unverified.
@@ -20,8 +20,8 @@ local function round(obj, radius)
     make("UICorner", obj, {CornerRadius=UDim.new(0,radius or 12)})
 end
 -- Deep plum text keeps the pastel surfaces readable.
-local white = Color3.fromRGB(81,48,70)
-local muted = Color3.fromRGB(119,82,106)
+local white = Color3.fromRGB(62,31,51)
+local muted = Color3.fromRGB(94,56,80)
 local themes = {
     {"Sakura", Color3.fromRGB(166,56,105), Color3.fromRGB(172,139,204)},
     {"Lavender", Color3.fromRGB(120,75,161), Color3.fromRGB(192,156,218)},
@@ -44,35 +44,53 @@ local window=make("Frame",gui,{Size=UDim2.fromOffset(720,560),Position=UDim2.fro
 round(window,16)
 local scale=make("UIScale",window,{Scale=1})
 local border=make("UIStroke",window,{Color=themes[1][2],Transparency=.6})
-local rail=make("Frame",window,{Name="ReservedSidebar",Position=UDim2.fromOffset(0,56),
-    Size=UDim2.new(0,140,1,-56),BackgroundColor3=Color3.fromRGB(249,226,238),BorderSizePixel=0})
+local rail=make("Frame",window,{Name="ReservedSidebar",Position=UDim2.fromOffset(0,70),
+    Size=UDim2.new(0,140,1,-70),BackgroundColor3=Color3.fromRGB(249,226,238),BorderSizePixel=0})
 -- Intentionally no menu labels, menu icons, or placeholder actions.
-local top=make("Frame",window,{Size=UDim2.new(1,0,0,56),BackgroundColor3=Color3.fromRGB(255,247,251),BorderSizePixel=0,Active=true})
+local top=make("Frame",window,{Size=UDim2.new(1,0,0,70),BackgroundColor3=Color3.fromRGB(255,247,251),BorderSizePixel=0,Active=true})
 local gradient=make("UIGradient",top,{Color=ColorSequence.new(themes[1][2],themes[1][3]),Transparency=NumberSequence.new(.78)})
 local function text(parent,value,x,y,w,h,size,color)
     return make("TextLabel",parent,{Text=value,Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(w,h),
-        BackgroundTransparency=1,TextColor3=color or white,Font=Enum.Font.Gotham,TextSize=size or 13,
+        BackgroundTransparency=1,TextColor3=color or white,Font=Enum.Font.GothamMedium,TextSize=size or 14,
         TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd})
 end
-local brand=text(top,"Sakura",12,8,116,40,26,themes[1][2])
-brand.Font=Enum.Font.Antique
+-- Rounded display face, larger title and a native blossom sticker.
+local function blossom(parent,x,y,size)
+    local flower=make("Frame",parent,{Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(size,size),
+        BackgroundTransparency=1})
+    for i=0,4 do
+        local a=math.rad(i*72-90)
+        local petal=make("Frame",flower,{AnchorPoint=Vector2.new(.5,.5),
+            Position=UDim2.fromScale(.5+math.cos(a)*.25,.5+math.sin(a)*.25),
+            Size=UDim2.fromScale(.46,.46),BackgroundColor3=Color3.fromRGB(234,132,175),BorderSizePixel=0,
+            Rotation=i*72})
+        round(petal,size)
+    end
+    local center=make("Frame",flower,{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),
+        Size=UDim2.fromScale(.22,.22),BackgroundColor3=Color3.fromRGB(255,226,158),BorderSizePixel=0})
+    round(center,size)
+    return flower
+end
+blossom(top,9,23,27)
+local brand=text(top,"Sakura",39,14,101,42,32,themes[1][2])
+brand.Font=Enum.Font.FredokaOne
 brand.TextXAlignment=Enum.TextXAlignment.Center
 brand.TextYAlignment=Enum.TextYAlignment.Center
 brand.TextTruncate=Enum.TextTruncate.None
 brand.TextScaled=true
-make("UITextSizeConstraint",brand,{MinTextSize=18,MaxTextSize=26})
-local homeTitle=text(top,"Home",156,6,380,28,24,white)
-homeTitle.Font=Enum.Font.Antique
-text(top,"Tap Sim Reborn  /  Session overview",157,34,380,16,10,muted)
+make("UITextSizeConstraint",brand,{MinTextSize=24,MaxTextSize=32})
+local homeTitle=text(top,"Home",156,8,380,30,25,white)
+homeTitle.Font=Enum.Font.GothamBold
+text(top,"Tap Sim Reborn  /  Session overview",157,42,380,20,13,muted)
 local function button(parent,value,pos,size)
     local b=make("TextButton",parent,{Text=value,Position=pos,Size=size,BackgroundColor3=Color3.fromRGB(246,218,233),
-        TextColor3=white,Font=Enum.Font.GothamMedium,TextSize=13,BorderSizePixel=0})
+        TextColor3=white,Font=Enum.Font.GothamMedium,TextSize=14,BorderSizePixel=0})
     round(b,10)
     return b
 end
 local minimize=button(top,"–",UDim2.new(1,-76,0,14),UDim2.fromOffset(28,28))
 local close=button(top,"×",UDim2.new(1,-40,0,14),UDim2.fromOffset(28,28))
-local body=make("ScrollingFrame",window,{Position=UDim2.fromOffset(156,66),Size=UDim2.new(1,-170,1,-78),
+local body=make("ScrollingFrame",window,{Position=UDim2.fromOffset(156,80),Size=UDim2.new(1,-170,1,-92),
     BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=3,ScrollBarImageColor3=themes[1][2],
     CanvasSize=UDim2.fromOffset(0,626)})
 local function card(y,h,color)
@@ -92,13 +110,13 @@ local avatar=make("ImageLabel",profile,{Position=UDim2.fromOffset(14,12),Size=UD
 round(avatar,30)
 make("UIStroke",avatar,{Color=themes[1][2],Thickness=2})
 text(profile,player.DisplayName,90,12,300,25,18,white)
-text(profile,"@"..player.Name,90,39,300,18,11,muted)
-text(profile,"TAP SIM REBORN",90,60,300,15,10,themes[1][2])
+text(profile,"@"..player.Name,90,39,300,18,13,muted)
+text(profile,"TAP SIM REBORN",90,60,300,17,12,themes[1][2])
 local session=card(216,76)
 text(session,"✿  SESSION",14,7,450,22,14,themes[1][2])
 local stats=text(session,"Session: 0s  •  Tap attempts: 0",14,37,490,25,14,white)
 local function label(value,y,h)
-    local l=text(body,value,2,y,526,h or 22,12,muted)
+    local l=text(body,value,2,y,526,h or 22,14,muted)
     l.TextWrapped=true
     l.TextTruncate=Enum.TextTruncate.None
     return l
@@ -236,17 +254,31 @@ connect(toggle.Activated,function()
     toggle.TextColor3=themes[themeIndex][2]
     status.Text="Running • attempts are counted, rewards are not verified."
 end)
+-- Kept outside the window so hiding the panel leaves a restore button.
+local restore=make("TextButton",gui,{Name="SakuraRestore",Visible=false,Text="",
+    Position=UDim2.new(0,20,.5,-29),Size=UDim2.fromOffset(58,58),
+    BackgroundColor3=Color3.fromRGB(255,231,243),BorderSizePixel=0,
+    AutoButtonColor=true,ZIndex=20})
+round(restore,29)
+make("UIStroke",restore,{Color=themes[1][2],Thickness=2,Transparency=.15})
+blossom(restore,10,10,38)
+local function showWindow(show)
+    window.Visible=show
+    restore.Visible=not show
+    if not show then menu.Visible=false end
+end
+connect(restore.Activated,function() showWindow(true) end)
 local mini=false
 connect(minimize.Activated,function()
     mini=not mini
     body.Visible=not mini
     rail.Visible=not mini
     menu.Visible=false
-    window.Size=UDim2.fromOffset(720,mini and 56 or 560)
+    window.Size=UDim2.fromOffset(720,mini and 70 or 560)
     minimize.Text=mini and "+" or "–"
 end)
 connect(UIS.InputBegan,function(input,processed)
-    if not processed and input.KeyCode==Enum.KeyCode.RightShift then window.Visible=not window.Visible end
+    if not processed and input.KeyCode==Enum.KeyCode.RightShift then showWindow(not window.Visible) end
 end)
 local dragging,dragStart,original
 connect(top.InputBegan,function(input)
@@ -285,7 +317,7 @@ connect(gui.Destroying,function()
     alive=false running=false
     for _,c in ipairs(connections) do c:Disconnect() end
 end)
-connect(close.Activated,function() gui:Destroy() end)
+connect(close.Activated,function() showWindow(false) end)
 local started,attempts=os.clock(),0
 task.spawn(function()
     while alive do
