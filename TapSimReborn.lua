@@ -1,4 +1,4 @@
--- Sakura • Tap Sim Reborn • revision 3
+-- Sakura • Tap Sim Reborn • revision 4
 -- Standalone UI. Does not change loader.lua.
 -- Auto Tap calls a selected existing GUI button's connected callback.
 -- Requires getconnections; compatibility with the game's current UI is unverified.
@@ -54,8 +54,13 @@ local function text(parent,value,x,y,w,h,size,color)
         BackgroundTransparency=1,TextColor3=color or white,Font=Enum.Font.Gotham,TextSize=size or 13,
         TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd})
 end
-local brand=text(top,"Sakura",14,6,124,40,30,themes[1][2])
+local brand=text(top,"Sakura",12,8,116,40,26,themes[1][2])
 brand.Font=Enum.Font.Antique
+brand.TextXAlignment=Enum.TextXAlignment.Center
+brand.TextYAlignment=Enum.TextYAlignment.Center
+brand.TextTruncate=Enum.TextTruncate.None
+brand.TextScaled=true
+make("UITextSizeConstraint",brand,{MinTextSize=18,MaxTextSize=26})
 local homeTitle=text(top,"Home",156,6,380,28,24,white)
 homeTitle.Font=Enum.Font.Antique
 text(top,"Tap Sim Reborn  /  Session overview",157,34,380,16,10,muted)
