@@ -1,4 +1,4 @@
--- Sakura • Tap Sim Reborn • revision 5
+-- Sakura • Tap Sim Reborn • revision 6
 -- Standalone UI. Does not change loader.lua.
 -- Auto Tap calls a selected existing GUI button's connected callback.
 -- Requires getconnections; compatibility with the game's current UI is unverified.
@@ -71,7 +71,7 @@ local function blossom(parent,x,y,size)
     round(center,size)
     return flower
 end
-blossom(top,9,23,27)
+local headerFlower=blossom(top,9,23,27)
 local brand=text(top,"Sakura",39,14,101,42,32,themes[1][2])
 brand.Font=Enum.Font.FredokaOne
 brand.TextXAlignment=Enum.TextXAlignment.Center
@@ -92,7 +92,7 @@ local minimize=button(top,"–",UDim2.new(1,-76,0,14),UDim2.fromOffset(28,28))
 local close=button(top,"×",UDim2.new(1,-40,0,14),UDim2.fromOffset(28,28))
 local body=make("ScrollingFrame",window,{Position=UDim2.fromOffset(156,80),Size=UDim2.new(1,-170,1,-92),
     BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=3,ScrollBarImageColor3=themes[1][2],
-    CanvasSize=UDim2.fromOffset(0,626)})
+    CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y})
 local function card(y,h,color)
     local c=make("Frame",body,{Position=UDim2.fromOffset(0,y),Size=UDim2.new(1,-6,0,h),
         BackgroundColor3=color or Color3.fromRGB(255,250,253),BorderSizePixel=0,ClipsDescendants=true})
@@ -126,16 +126,23 @@ local picker=button(body,"Select game tap button  ›",UDim2.fromOffset(0,334),U
 local toggle=button(body,"Auto Tap   •   OFF",UDim2.fromOffset(0,382),UDim2.new(.65,-6,0,38))
 local speed=button(body,"0.4s / tap",UDim2.new(.65,4,0,382),UDim2.new(.35,-10,0,38))
 label("APPEARANCE",436)
+local function setTheme(i)
+    themeIndex=i
+    local t=themes[i]
+    gradient.Color=ColorSequence.new(t[2],t[3])
+    border.Color=t[2]
+    brand.TextColor3=t[2]
+    body.ScrollBarImageColor3=t[2]
+    toggle.TextColor3=running and t[2] or white
+end
+local refreshThemeDropdown
 for i,t in ipairs(themes) do
+    local index=i
     local b=button(body,t[1],UDim2.new((i-1)*.25,0,0,464),UDim2.new(.25,-6,0,34))
     b.TextColor3=t[2]
     connect(b.Activated,function()
-        themeIndex=i
-        gradient.Color=ColorSequence.new(t[2],t[3])
-        border.Color=t[2]
-        brand.TextColor3=t[2]
-        body.ScrollBarImageColor3=t[2]
-        toggle.TextColor3=running and t[2] or white
+        setTheme(index)
+        if refreshThemeDropdown then refreshThemeDropdown() end
     end)
 end
 local status=label("Ready • select the game's tap button first.",512,48)
@@ -210,12 +217,14 @@ connect(picker.Activated,function()
     end
     menu.Visible=true
 end)
+local refreshInterval
 local delays={0.2,0.4,0.6,1}
 local delayIndex=2
 connect(speed.Activated,function()
     delayIndex=delayIndex%#delays+1
     interval=delays[delayIndex]
     speed.Text=tostring(interval).."s / tap"
+    if refreshInterval then refreshInterval() end
 end)
 local function tap()
     if not selected or not selected:IsDescendantOf(pg) then
@@ -319,6 +328,191 @@ connect(gui.Destroying,function()
 end)
 connect(close.Activated,function() showWindow(false) end)
 local started,attempts=os.clock(),0
+
+-- Working UI component examples; each control changes a real local setting.
+local controls=make("Frame",body,{Name="Controls",Position=UDim2.fromOffset(0,626),
+    Size=UDim2.new(1,-6,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1})
+make("UIListLayout",controls,{Padding=UDim.new(0,12),SortOrder=Enum.SortOrder.LayoutOrder})
+make("UIPadding",controls,{PaddingBottom=UDim.new(0,20)})
+local order=0
+local function row(title)
+    order=order+1
+    local frame=make("Frame",controls,{Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,
+        BackgroundTransparency=1,LayoutOrder=order})
+    make("UIListLayout",frame,{Padding=UDim.new(0,7),SortOrder=Enum.SortOrder.LayoutOrder})
+    local caption=text(frame,title,0,0,520,22,14,white)
+    caption.LayoutOrder=0
+    return frame
+end
+local heading=row("✿  UI CONTROLS")
+text(heading,"Try each control below.",0,0,520,22,12,muted).LayoutOrder=1
+
+local actionRow=row("Button")
+local reset=button(actionRow,"Reset session counter",UDim2.new(),UDim2.new(1,0,0,38))
+reset.LayoutOrder=1
+connect(reset.Activated,function()
+    attempts=0
+    started=os.clock()
+    stats.Text="Session: 0s  •  Tap attempts: 0"
+    status.Text="Session counter reset."
+end)
+
+local switchRow=row("Toggle")
+local switch=button(switchRow,"",UDim2.new(),UDim2.new(1,0,0,42))
+switch.LayoutOrder=1
+local switchLabel=text(switch,"Flower sticker",14,0,360,42,14,white)
+local track=make("Frame",switch,{Position=UDim2.new(1,-66,.5,-12),Size=UDim2.fromOffset(52,24),
+    BackgroundColor3=themes[1][2],BorderSizePixel=0})
+round(track,12)
+local knob=make("Frame",track,{Position=UDim2.fromOffset(30,3),Size=UDim2.fromOffset(18,18),
+    BackgroundColor3=Color3.fromRGB(255,250,253),BorderSizePixel=0})
+round(knob,9)
+local function refreshSwitch()
+    local on=headerFlower.Visible
+    switchLabel.Text="Flower sticker  •  "..(on and "ON" or "OFF")
+    track.BackgroundColor3=on and themes[themeIndex][2] or Color3.fromRGB(186,159,175)
+    knob.Position=UDim2.fromOffset(on and 30 or 4,3)
+end
+connect(switch.Activated,function()
+    headerFlower.Visible=not headerFlower.Visible
+    refreshSwitch()
+end)
+refreshSwitch()
+
+-- Inline lists expand the section and canvas instead of covering other controls.
+local function dropdown(title,options,multi,initial,callback)
+    local frame=row(title)
+    local selectedValues={}
+    for _,value in ipairs(initial) do selectedValues[value]=true end
+    local trigger=button(frame,"",UDim2.new(),UDim2.new(1,0,0,40))
+    trigger.LayoutOrder=1
+    trigger.TextTruncate=Enum.TextTruncate.AtEnd
+    local list=make("Frame",frame,{Visible=false,Size=UDim2.new(1,0,0,0),
+        AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1,LayoutOrder=2})
+    make("UIListLayout",list,{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder})
+    local choices={}
+    local function values()
+        local result={}
+        for _,value in ipairs(options) do
+            if selectedValues[value] then table.insert(result,value) end
+        end
+        return result
+    end
+    local function refresh()
+        local current=values()
+        trigger.Text=(#current>0 and table.concat(current,", ") or "None selected")..
+            (list.Visible and "  ▴" or "  ▾")
+        for value,b in pairs(choices) do
+            b.Text=(selectedValues[value] and "✓  " or "○  ")..value
+            b.BackgroundColor3=selectedValues[value] and Color3.fromRGB(239,196,219)
+                or Color3.fromRGB(252,232,242)
+        end
+    end
+    for i,value in ipairs(options) do
+        local option=value
+        local b=button(list,option,UDim2.new(),UDim2.new(1,0,0,36))
+        b.LayoutOrder=i
+        choices[option]=b
+        connect(b.Activated,function()
+            if multi then selectedValues[option]=not selectedValues[option]
+            else selectedValues={} selectedValues[option]=true list.Visible=false end
+            refresh()
+            callback(values())
+        end)
+    end
+    connect(trigger.Activated,function() list.Visible=not list.Visible refresh() end)
+    refresh()
+    return function(value)
+        selectedValues={}
+        for _,v in ipairs(value) do selectedValues[v]=true end
+        refresh()
+    end
+end
+
+local syncTheme=dropdown("Dropdown • select one theme",
+    {"Sakura","Lavender","Mint","Sky"},false,{themes[themeIndex][1]},function(values)
+        for i,t in ipairs(themes) do
+            if t[1]==values[1] then setTheme(i) break end
+        end
+        refreshSwitch()
+    end)
+refreshThemeDropdown=function()
+    syncTheme({themes[themeIndex][1]})
+    refreshSwitch()
+end
+dropdown("Multi-dropdown • select visible panels",
+    {"Banner","Profile","Session"},true,{"Banner","Profile","Session"},function(values)
+        local visible={}
+        for _,v in ipairs(values) do visible[v]=true end
+        banner.Visible=visible.Banner==true
+        profile.Visible=visible.Profile==true
+        session.Visible=visible.Session==true
+    end)
+
+local sliderRow=row("Slider • tap interval")
+local slider=make("Frame",sliderRow,{Size=UDim2.new(1,0,0,64),
+    BackgroundColor3=Color3.fromRGB(246,218,233),BorderSizePixel=0,LayoutOrder=1})
+round(slider,10)
+local valueLabel=text(slider,"",14,2,490,24,14,white)
+local hit=button(slider,"",UDim2.fromOffset(14,27),UDim2.new(1,-28,0,32))
+hit.BackgroundTransparency=1
+local bar=make("Frame",hit,{Position=UDim2.new(0,0,.5,-3),Size=UDim2.new(1,0,0,6),
+    BackgroundColor3=Color3.fromRGB(219,179,201),BorderSizePixel=0})
+round(bar,3)
+local fill=make("Frame",bar,{Size=UDim2.new(0,0,1,0),BackgroundColor3=themes[1][2],BorderSizePixel=0})
+round(fill,3)
+local thumb=make("Frame",bar,{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(0,.5),
+    Size=UDim2.fromOffset(18,18),BackgroundColor3=themes[1][2],BorderSizePixel=0})
+round(thumb,9)
+local sliderInput
+local previousScrolling
+local function finishSlider()
+    if sliderInput then
+        body.ScrollingEnabled=previousScrolling
+        sliderInput=nil
+    end
+end
+refreshInterval=function()
+    local fraction=math.clamp((interval-.1)/1.9,0,1)
+    fill.Size=UDim2.fromScale(fraction,1)
+    thumb.Position=UDim2.fromScale(fraction,.5)
+    valueLabel.Text=string.format("%.2fs per tap  •  range: 0.10–2.00s",interval)
+    speed.Text=string.format("%.2fs / tap",interval)
+end
+local function moveSlider(x)
+    if bar.AbsoluteSize.X<=0 then return end
+    local fraction=math.clamp((x-bar.AbsolutePosition.X)/bar.AbsoluteSize.X,0,1)
+    interval=math.floor((.1+fraction*1.9)*100+.5)/100
+    refreshInterval()
+end
+connect(hit.InputBegan,function(input)
+    if input.UserInputType==Enum.UserInputType.MouseButton1
+        or input.UserInputType==Enum.UserInputType.Touch then
+        if sliderInput then return end
+        sliderInput=input
+        previousScrolling=body.ScrollingEnabled
+        body.ScrollingEnabled=false
+        moveSlider(input.Position.X)
+    end
+end)
+connect(UIS.InputChanged,function(input)
+    if sliderInput and (input==sliderInput or
+        (sliderInput.UserInputType==Enum.UserInputType.MouseButton1
+        and input.UserInputType==Enum.UserInputType.MouseMovement)) then
+        moveSlider(input.Position.X)
+    end
+end)
+connect(UIS.InputEnded,function(input)
+    if input==sliderInput then finishSlider() end
+end)
+connect(UIS.WindowFocusReleased,finishSlider)
+connect(window:GetPropertyChangedSignal("Visible"),function()
+    if not window.Visible then finishSlider() end
+end)
+connect(body:GetPropertyChangedSignal("Visible"),function()
+    if not body.Visible then finishSlider() end
+end)
+refreshInterval()
 task.spawn(function()
     while alive do
         if running then
