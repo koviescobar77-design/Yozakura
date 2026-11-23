@@ -128,18 +128,17 @@ row("Maps · refresh destinations",function()
 end)
 status = row("Tap target: bottom-center blue arrow")
 task.spawn(function()
-    local bound
     while gui.Parent do
         if enabled and not input:GetFocusedTextBox() then
             local ok,err = pcall(function()
                 local size = assert(workspace.CurrentCamera).ViewportSize
-                local point = Vector2.new(size.X*0.5,size.Y*0.895)
-                local b = targetAt(point)
-                assert(b and (not bound or not bound.Parent or b==bound),"Blue tap button unavailable")
-                local center = b.AbsolutePosition+b.AbsoluteSize/2
-                assert(math.abs(center.X-point.X)<size.X*.06 and math.abs(center.Y-point.Y)<size.Y*.08,"Tap button is outside target area")
-                bound=b
-                click(b,point)
+                local x = math.round(size.X * 0.5)
+                local y = math.round(size.Y * 0.905)
+                local mouse = game:GetService("VirtualInputManager")
+                mouse:SendMouseButtonEvent(x,y,0,true,game,0)
+                task.wait(0.03)
+                mouse:SendMouseButtonEvent(x,y,0,false,game,0)
+                status.Text = "Clicking bottom-center arrow"
             end)
             if not ok then enabled=false; toggle.Text="Auto Click · OFF"; status.Text=tostring(err) end
         end
