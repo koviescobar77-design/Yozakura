@@ -126,10 +126,56 @@ row("Maps · refresh destinations",function()
     end
     status.Text = #choices>0 and "Choose a visible destination." or "Open the game's teleport menu, then refresh Maps."
 end)
+local picking, hatchButton = false, nil
+local hatchToggle
+hatchToggle = row("Auto Hatch · OFF",function()
+    if picking or hatchButton then
+        picking, hatchButton = false, nil
+        hatchToggle.Text = "Auto Hatch · OFF"
+    else
+        picking = true
+        hatchToggle.Text = "Auto Hatch · Pick hatch button"
+        status.Text = "Open an egg menu first, then click its hatch button."
+    end
+end)
+local pickConnection = input.InputBegan:Connect(function(event)
+    if not picking then return end
+    if event.UserInputType ~= Enum.UserInputType.MouseButton1 and event.UserInputType ~= Enum.UserInputType.Touch then return end
+    local point = Vector2.new(event.Position.X,event.Position.Y)
+    local button = targetAt(point)
+    if not button then return end
+    picking, hatchButton = false, button
+    hatchToggle.Text = "Auto Hatch · ON"
+    status.Text = "Repeating the selected hatch button."
+end)
+gui.Destroying:Connect(function() pickConnection:Disconnect() end)
+task.spawn(function()
+    while gui.Parent do
+        task.wait(1)
+        local button = hatchButton
+        if button and not button.Parent then
+            hatchButton = nil
+            hatchToggle.Text = "Auto Hatch · OFF"
+            status.Text = "Egg menu changed. Select the hatch button again."
+        elseif button and visible(button) and not input:GetFocusedTextBox() then
+            local center = button.AbsolutePosition + button.AbsoluteSize/2
+            if targetAt(center) ~= button then center += guiService:GetGuiInset() end
+            if targetAt(center) == button then
+                local ok,err = pcall(click,button,center)
+                if not ok then
+                    hatchButton = nil
+                    hatchToggle.Text = "Auto Hatch · OFF"
+                    status.Text = tostring(err)
+                end
+            end
+        end
+    end
+end)
 status = row("Tap target: bottom-center blue arrow")
 task.spawn(function()
     while gui.Parent do
-        if enabled and not input:GetFocusedTextBox() then
+        local started = os.clock()
+        if enabled and not picking and not (hatchButton and visible(hatchButton)) and not input:GetFocusedTextBox() then
             local ok,err = pcall(function()
                 local size = assert(workspace.CurrentCamera).ViewportSize
                 local x = math.round(size.X * 0.5)
@@ -142,6 +188,6 @@ task.spawn(function()
             end)
             if not ok then enabled=false; toggle.Text="Auto Click · OFF"; status.Text=tostring(err) end
         end
-        task.wait(.4)
+        task.wait(math.max(0,0.1 - (os.clock() - started)))
     end
 end)
