@@ -63,12 +63,24 @@ local function click(button,point)
     vim:SendMouseButtonEvent(point.X,point.Y,0,true,game,0)
     vim:SendMouseButtonEvent(point.X,point.Y,0,false,game,0)
 end
-local enabled = false
-local toggle, status
+local status
 row("Sakura · Tap Simulator Reborn")
-toggle = row("Auto Click · OFF",function()
-    enabled = not enabled
-    toggle.Text = enabled and "Auto Click · ON" or "Auto Click · OFF"
+row("Toggle game Auto Clicker",function()
+    local size = workspace.CurrentCamera.ViewportSize
+    local point = Vector2.new(math.round(size.X * 0.586), math.round(size.Y * 0.93))
+    local button = targetAt(point)
+    local node = button
+    while node and node ~= pg do
+        local name = node.Name:lower():gsub("[^a-z]","")
+        if name == "autoclicker" or name == "autotap" or name == "autoclick" then break end
+        node = node.Parent
+    end
+    if not node or node == pg then
+        status.Text = "Tap the game's Auto Clicker control beside the blue tap button."
+        return
+    end
+    local ok, err = pcall(click,button,point)
+    status.Text = ok and "Check the game HUD for Auto Clicker status." or tostring(err)
 end)
 local destinations = {}
 local function caption(button)
@@ -98,8 +110,6 @@ end
 row("Maps · refresh destinations",function()
     for _,r in ipairs(destinations) do r:Destroy() end
     table.clear(destinations)
-    enabled = false
-    toggle.Text = "Auto Click · OFF"
     local choices = {}
     for _,b in ipairs(pg:GetDescendants()) do
         if b:IsA("GuiButton") and b.Interactable and visible(b) and mapMenu(b) then
@@ -171,23 +181,4 @@ task.spawn(function()
         end
     end
 end)
-status = row("Tap target: bottom-center blue arrow")
-task.spawn(function()
-    while gui.Parent do
-        local started = os.clock()
-        if enabled and not picking and not (hatchButton and visible(hatchButton)) and not input:GetFocusedTextBox() then
-            local ok,err = pcall(function()
-                local size = assert(workspace.CurrentCamera).ViewportSize
-                local x = math.round(size.X * 0.5)
-                local y = math.round(size.Y * 0.905)
-                local mouse = game:GetService("VirtualInputManager")
-                mouse:SendMouseButtonEvent(x,y,0,true,game,0)
-                task.wait(0.03)
-                mouse:SendMouseButtonEvent(x,y,0,false,game,0)
-                status.Text = "Clicking bottom-center arrow"
-            end)
-            if not ok then enabled=false; toggle.Text="Auto Click · OFF"; status.Text=tostring(err) end
-        end
-        task.wait(math.max(0,0.1 - (os.clock() - started)))
-    end
-end)
+status = row("Use the game auto clicker to keep your mouse free.")
