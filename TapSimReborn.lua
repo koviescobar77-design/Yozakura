@@ -123,6 +123,15 @@ local function label(value,y,h)
 end
 label("FARMING",306)
 local picker=button(body,"Select game tap button  ›",UDim2.fromOffset(0,334),UDim2.new(1,-6,0,38))
+local tapNav=button(rail,"Auto Tap",UDim2.fromOffset(8,12),UDim2.new(1,-16,0,38))
+local function showTapControls()
+    body.CanvasPosition=Vector2.new(0,math.max(0,picker.Position.Y.Offset-32))
+end
+connect(tapNav.Activated,showTapControls)
+task.defer(function()
+    game:GetService("RunService").Heartbeat:Wait()
+    if gui.Parent then showTapControls() end
+end)
 local toggle=button(body,"Auto Tap   •   OFF",UDim2.fromOffset(0,382),UDim2.new(.65,-6,0,38))
 local speed=button(body,"0.4s / tap",UDim2.new(.65,4,0,382),UDim2.new(.35,-10,0,38))
 label("APPEARANCE",436)
