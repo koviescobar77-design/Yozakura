@@ -37,7 +37,11 @@ local window=make("Frame",gui,{Size=UDim2.fromOffset(720,560),Position=UDim2.fro
 round(window,16)
 local scale=make("UIScale",window,{Scale=1})
 local border=make("UIStroke",window,{Color=accent,Transparency=.6})
+local rail=make("Frame",window,{Name="ReservedSidebar",Position=UDim2.fromOffset(0,70),
+    Size=UDim2.new(0,140,1,-70),BackgroundColor3=Color3.fromRGB(39,16,32),BackgroundTransparency=.28,BorderSizePixel=0})
+-- Intentionally no menu labels, menu icons, or placeholder actions.
 local top=make("Frame",window,{Size=UDim2.new(1,0,0,70),BackgroundColor3=Color3.fromRGB(58,22,42),BackgroundTransparency=.18,BorderSizePixel=0,Active=true})
+round(top,16)
 local gradient=make("UIGradient",top,{Color=ColorSequence.new(accent,accentShade),Rotation=18,Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,.52),NumberSequenceKeypoint.new(1,.91)})})
 local function text(parent,value,x,y,w,h,size,color)
     return make("TextLabel",parent,{Text=value,Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(w,h),
@@ -74,7 +78,7 @@ task.spawn(function()
     local ok,info=pcall(function()
         return game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId,Enum.InfoType.Asset)
     end)
-    if alive and ok and type(info.Name)=="string" then
+    if alive and ok and type(info)=="table" and type(info.Name)=="string" then
         homeTitle.Text=info.Name
     end
 end)
@@ -87,7 +91,7 @@ local function button(parent,value,pos,size)
 end
 local minimize=button(top,"–",UDim2.new(1,-76,0,14),UDim2.fromOffset(28,28))
 local close=button(top,"×",UDim2.new(1,-40,0,14),UDim2.fromOffset(28,28))
-local body=make("ScrollingFrame",window,{Position=UDim2.fromOffset(14,80),Size=UDim2.new(1,-28,1,-92),
+local body=make("ScrollingFrame",window,{Position=UDim2.fromOffset(156,80),Size=UDim2.new(1,-170,1,-92),
     BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=3,ScrollBarImageColor3=accent,
     CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y})
 local function card(y,h,color)
@@ -102,7 +106,7 @@ local function card(y,h,color)
 end
 local banner=card(0,181,Color3.fromRGB(65,24,55))
 local bannerImage=make("ImageLabel",banner,{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,
-    ScaleType=Enum.ScaleType.Crop,Image="",ZIndex=2})
+    ScaleType=Enum.ScaleType.Fit,Image="",ZIndex=2})
 local bannerNotice=text(banner,"Loading Sakura artwork…",14,77,480,26,12,Color3.fromRGB(255,222,242))
 local profile=card(191,84)
 local avatar=make("ImageLabel",profile,{Position=UDim2.fromOffset(14,12),Size=UDim2.fromOffset(60,60),
@@ -111,6 +115,7 @@ round(avatar,30)
 make("UIStroke",avatar,{Color=accent,Thickness=2})
 text(profile,player.DisplayName,90,12,300,25,18,white)
 text(profile,"@"..player.Name,90,39,300,18,13,muted)
+text(profile,"TAP SIM REBORN",90,60,300,17,12,accent)
 local session=card(285,76)
 text(session,"✿  SESSION",14,7,450,22,14,accent)
 local stats=text(session,"Session: 0s",14,37,490,25,14,white)
@@ -203,11 +208,43 @@ local function showWindow(show)
     window.Visible=show
     restore.Visible=not show
 end
-connect(restore.Activated,function() showWindow(true) end)
+local restoreInput, restoreStart, restoreOrigin
+local restoreDragged=false
+connect(restore.InputBegan,function(input)
+    if restoreInput then return end
+    if input.UserInputType~=Enum.UserInputType.MouseButton1 and input.UserInputType~=Enum.UserInputType.Touch then return end
+    restoreInput=input
+    restoreStart=input.Position
+    restoreOrigin=restore.Position
+    restoreDragged=false
+end)
+connect(UIS.InputChanged,function(input)
+    if not restoreInput then return end
+    local mouseMove=restoreInput.UserInputType==Enum.UserInputType.MouseButton1
+        and input.UserInputType==Enum.UserInputType.MouseMovement
+    if input~=restoreInput and not mouseMove then return end
+    local delta=input.Position-restoreStart
+    if not restoreDragged and delta.Magnitude<6 then return end
+    restoreDragged=true
+    local bounds=gui.AbsoluteSize
+    local x=restoreOrigin.X.Scale*bounds.X+restoreOrigin.X.Offset+delta.X
+    local y=restoreOrigin.Y.Scale*bounds.Y+restoreOrigin.Y.Offset+delta.Y
+    restore.Position=UDim2.fromOffset(math.clamp(x,0,math.max(0,bounds.X-58)),
+        math.clamp(y,0,math.max(0,bounds.Y-58)))
+end)
+connect(UIS.InputEnded,function(input)
+    if input==restoreInput then restoreInput=nil end
+end)
+connect(restore.Activated,function(input)
+    if restoreDragged and input and (input.UserInputType==Enum.UserInputType.MouseButton1
+        or input.UserInputType==Enum.UserInputType.Touch) then return end
+    showWindow(true)
+end)
 local mini=false
 connect(minimize.Activated,function()
     mini=not mini
     body.Visible=not mini
+    rail.Visible=not mini
     window.Size=UDim2.fromOffset(720,mini and 70 or 560)
     minimize.Text=mini and "+" or "–"
 end)
