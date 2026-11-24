@@ -37,9 +37,6 @@ local window=make("Frame",gui,{Size=UDim2.fromOffset(720,560),Position=UDim2.fro
 round(window,16)
 local scale=make("UIScale",window,{Scale=1})
 local border=make("UIStroke",window,{Color=accent,Transparency=.6})
-local rail=make("Frame",window,{Name="ReservedSidebar",Position=UDim2.fromOffset(0,70),
-    Size=UDim2.new(0,140,1,-70),BackgroundColor3=Color3.fromRGB(39,16,32),BackgroundTransparency=.28,BorderSizePixel=0})
--- Intentionally no menu labels, menu icons, or placeholder actions.
 local top=make("Frame",window,{Size=UDim2.new(1,0,0,70),BackgroundColor3=Color3.fromRGB(58,22,42),BackgroundTransparency=.18,BorderSizePixel=0,Active=true})
 local gradient=make("UIGradient",top,{Color=ColorSequence.new(accent,accentShade),Rotation=18,Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,.52),NumberSequenceKeypoint.new(1,.91)})})
 local function text(parent,value,x,y,w,h,size,color)
@@ -51,13 +48,14 @@ local stickerImages={}
 local function circuitSticker(parent,x,y,size)
     local tile=make("Frame",parent,{Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(size,size),
         BackgroundColor3=Color3.fromRGB(27,23,40),BorderSizePixel=0,ZIndex=parent.ZIndex+1})
-    round(tile,9)
+    local radius=size==58 and 29 or 9
+    round(tile,radius)
     local fallback=text(tile,"✿",0,0,size,size,23,accent)
     fallback.TextXAlignment=Enum.TextXAlignment.Center
     fallback.ZIndex=tile.ZIndex
     local icon=make("ImageLabel",tile,{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,
         ScaleType=Enum.ScaleType.Crop,ZIndex=tile.ZIndex+1})
-    round(icon,9)
+    round(icon,radius)
     table.insert(stickerImages,icon)
 end
 circuitSticker(top,9,17,36)
@@ -70,9 +68,16 @@ brand.TextScaled=true
 make("UITextSizeConstraint",brand,{MinTextSize=18,MaxTextSize=32})
 local gold=Color3.fromRGB(255,219,177)
 make("UIGradient",brand,{Rotation=85,Color=ColorSequence.new(gold,accent)})
-local homeTitle=text(top,"Nezuko Moonlight",156,8,380,30,25,white)
+local homeTitle=text(top,"",156,12,470,46,24,white)
 homeTitle.Font=Enum.Font.Antique
-text(top,"Tap Sim Reborn  /  Session overview",157,42,380,20,13,Color3.fromRGB(239,193,151))
+task.spawn(function()
+    local ok,info=pcall(function()
+        return game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId,Enum.InfoType.Asset)
+    end)
+    if alive and ok and type(info.Name)=="string" then
+        homeTitle.Text=info.Name
+    end
+end)
 local function button(parent,value,pos,size)
     local b=make("TextButton",parent,{Text=value,Position=pos,Size=size,BackgroundColor3=Color3.fromRGB(92,34,61),BackgroundTransparency=.23,
         TextColor3=white,Font=Enum.Font.GothamMedium,TextSize=14,BorderSizePixel=0})
@@ -82,7 +87,7 @@ local function button(parent,value,pos,size)
 end
 local minimize=button(top,"–",UDim2.new(1,-76,0,14),UDim2.fromOffset(28,28))
 local close=button(top,"×",UDim2.new(1,-40,0,14),UDim2.fromOffset(28,28))
-local body=make("ScrollingFrame",window,{Position=UDim2.fromOffset(156,80),Size=UDim2.new(1,-170,1,-92),
+local body=make("ScrollingFrame",window,{Position=UDim2.fromOffset(14,80),Size=UDim2.new(1,-28,1,-92),
     BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=3,ScrollBarImageColor3=accent,
     CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y})
 local function card(y,h,color)
@@ -97,7 +102,7 @@ local function card(y,h,color)
 end
 local banner=card(0,181,Color3.fromRGB(65,24,55))
 local bannerImage=make("ImageLabel",banner,{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,
-    ScaleType=Enum.ScaleType.Fit,Image="",ZIndex=2})
+    ScaleType=Enum.ScaleType.Crop,Image="",ZIndex=2})
 local bannerNotice=text(banner,"Loading Sakura artwork…",14,77,480,26,12,Color3.fromRGB(255,222,242))
 local profile=card(191,84)
 local avatar=make("ImageLabel",profile,{Position=UDim2.fromOffset(14,12),Size=UDim2.fromOffset(60,60),
@@ -106,7 +111,6 @@ round(avatar,30)
 make("UIStroke",avatar,{Color=accent,Thickness=2})
 text(profile,player.DisplayName,90,12,300,25,18,white)
 text(profile,"@"..player.Name,90,39,300,18,13,muted)
-text(profile,"TAP SIM REBORN",90,60,300,17,12,accent)
 local session=card(285,76)
 text(session,"✿  SESSION",14,7,450,22,14,accent)
 local stats=text(session,"Session: 0s",14,37,490,25,14,white)
@@ -188,7 +192,7 @@ local restore=make("TextButton",gui,{Name="SakuraRestore",Visible=false,Text="",
     AutoButtonColor=true,ZIndex=20})
 round(restore,29)
 make("UIStroke",restore,{Color=accent,Thickness=2,Transparency=.15})
-circuitSticker(restore,8,8,42)
+circuitSticker(restore,0,0,58)
 task.spawn(function()
     local ok,asset=pcall(getArtwork,"sakura-circuit-sticker.jpg")
     if alive and ok then
@@ -204,7 +208,6 @@ local mini=false
 connect(minimize.Activated,function()
     mini=not mini
     body.Visible=not mini
-    rail.Visible=not mini
     window.Size=UDim2.fromOffset(720,mini and 70 or 560)
     minimize.Text=mini and "+" or "–"
 end)
