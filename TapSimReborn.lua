@@ -101,10 +101,10 @@ local function card(y,h,color)
     return c
 end
 local banner=card(0,112,Color3.fromRGB(65,24,55))
+local bannerBackdrop=make("ImageLabel",banner,{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,
+    ScaleType=Enum.ScaleType.Crop,ImageColor3=Color3.fromRGB(112,64,93),Image=""})
 local bannerImage=make("ImageLabel",banner,{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,
-    ScaleType=Enum.ScaleType.Crop,ImageColor3=Color3.fromRGB(235,145,197),Image=""})
-make("UIGradient",bannerImage,{Rotation=90,Color=ColorSequence.new(
-    Color3.fromRGB(255,222,246),Color3.fromRGB(145,82,143))})
+    ScaleType=Enum.ScaleType.Fit,Image="",ZIndex=2})
 local bannerNotice=text(banner,"Loading Sakura artwork…",14,42,480,26,12,Color3.fromRGB(255,222,242))
 local profile=card(122,84)
 local avatar=make("ImageLabel",profile,{Position=UDim2.fromOffset(14,12),Size=UDim2.fromOffset(60,60),
@@ -167,14 +167,17 @@ task.spawn(function()
         if type(override)=="string" and override~="" then return override end
         local register=getcustomasset or getsynasset
         assert(type(register)=="function" and type(writefile)=="function","Custom image support unavailable")
-        local path="Yozakura-SakuraLight-r2.jpg"
-        local bytes=game:HttpGet("https://raw.githubusercontent.com/koviescobar77-design/Yozakura/main/assets/sakura-light-banner.jpg")
+        local path="Yozakura-SakuraKitsune-v1.jpg"
+        local bytes=game:HttpGet("https://raw.githubusercontent.com/koviescobar77-design/Yozakura/main/assets/sakura-kitsune-banner.jpg")
         assert(bytes:sub(1,2)==string.char(255,216),"Invalid banner download")
         writefile(path,bytes)
         return register(path)
     end)
     if not alive then return end
-    if ok then bannerImage.Image=result bannerNotice.Visible=false
+    if ok then
+        bannerBackdrop.Image=result
+        bannerImage.Image=result
+        bannerNotice.Visible=false
     else bannerNotice.Text="Sakura image unavailable on this executor."
         warn("[Sakura banner] "..tostring(result)) end
 end)
