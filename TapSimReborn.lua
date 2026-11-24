@@ -23,7 +23,7 @@ end
 local white = Color3.fromRGB(255,232,245)
 local muted = Color3.fromRGB(224,174,206)
 local themes = {
-    {"Sakura", Color3.fromRGB(255,151,211), Color3.fromRGB(211,116,201)},
+    {"Sakura", Color3.fromRGB(255,159,193), Color3.fromRGB(183,84,131)},
     {"Lavender", Color3.fromRGB(215,173,255), Color3.fromRGB(192,156,218)},
     {"Mint", Color3.fromRGB(148,231,200), Color3.fromRGB(164,213,197)},
     {"Sky", Color3.fromRGB(160,210,255), Color3.fromRGB(177,199,230)},
@@ -40,14 +40,14 @@ local function connect(signal, fn)
 end
 -- Blank sidebar is reserved for the owner's future navigation labels.
 local window=make("Frame",gui,{Size=UDim2.fromOffset(720,560),Position=UDim2.fromScale(.5,.5),
-    AnchorPoint=Vector2.new(.5,.5),BackgroundColor3=Color3.fromRGB(28,12,26),BorderSizePixel=0,ClipsDescendants=true})
+    AnchorPoint=Vector2.new(.5,.5),BackgroundColor3=Color3.fromRGB(24,12,23),BorderSizePixel=0,ClipsDescendants=true})
 round(window,16)
 local scale=make("UIScale",window,{Scale=1})
 local border=make("UIStroke",window,{Color=themes[1][2],Transparency=.6})
 local rail=make("Frame",window,{Name="ReservedSidebar",Position=UDim2.fromOffset(0,70),
-    Size=UDim2.new(0,140,1,-70),BackgroundColor3=Color3.fromRGB(39,16,36),BorderSizePixel=0})
+    Size=UDim2.new(0,140,1,-70),BackgroundColor3=Color3.fromRGB(39,16,32),BorderSizePixel=0})
 -- Intentionally no menu labels, menu icons, or placeholder actions.
-local top=make("Frame",window,{Size=UDim2.new(1,0,0,70),BackgroundColor3=Color3.fromRGB(53,18,45),BorderSizePixel=0,Active=true})
+local top=make("Frame",window,{Size=UDim2.new(1,0,0,70),BackgroundColor3=Color3.fromRGB(58,22,42),BorderSizePixel=0,Active=true})
 local gradient=make("UIGradient",top,{Color=ColorSequence.new(themes[1][2],themes[1][3]),Transparency=NumberSequence.new(.78)})
 local function text(parent,value,x,y,w,h,size,color)
     return make("TextLabel",parent,{Text=value,Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(w,h),
@@ -67,7 +67,7 @@ local function blossom(parent,x,y,size)
         round(petal,size)
     end
     local center=make("Frame",flower,{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),
-        Size=UDim2.fromScale(.22,.22),BackgroundColor3=Color3.fromRGB(255,226,158),BorderSizePixel=0})
+        Size=UDim2.fromScale(.22,.22),BackgroundColor3=Color3.fromRGB(249,195,142),BorderSizePixel=0})
     round(center,size)
     return flower
 end
@@ -79,11 +79,11 @@ brand.TextYAlignment=Enum.TextYAlignment.Center
 brand.TextTruncate=Enum.TextTruncate.None
 brand.TextScaled=true
 make("UITextSizeConstraint",brand,{MinTextSize=24,MaxTextSize=32})
-local homeTitle=text(top,"Home",156,8,380,30,25,white)
-homeTitle.Font=Enum.Font.GothamBold
-text(top,"Tap Sim Reborn  /  Session overview",157,42,380,20,13,muted)
+local homeTitle=text(top,"Kitsune Moonlight",156,8,380,30,25,white)
+homeTitle.Font=Enum.Font.Antique
+text(top,"Tap Sim Reborn  /  Session overview",157,42,380,20,13,Color3.fromRGB(239,193,151))
 local function button(parent,value,pos,size)
-    local b=make("TextButton",parent,{Text=value,Position=pos,Size=size,BackgroundColor3=Color3.fromRGB(83,30,67),
+    local b=make("TextButton",parent,{Text=value,Position=pos,Size=size,BackgroundColor3=Color3.fromRGB(92,34,61),
         TextColor3=white,Font=Enum.Font.GothamMedium,TextSize=14,BorderSizePixel=0})
     round(b,10)
     return b
@@ -95,17 +95,16 @@ local body=make("ScrollingFrame",window,{Position=UDim2.fromOffset(156,80),Size=
     CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y})
 local function card(y,h,color)
     local c=make("Frame",body,{Position=UDim2.fromOffset(0,y),Size=UDim2.new(1,-6,0,h),
-        BackgroundColor3=color or Color3.fromRGB(49,20,43),BorderSizePixel=0,ClipsDescendants=true})
+        BackgroundColor3=color or Color3.fromRGB(53,22,41),BorderSizePixel=0,ClipsDescendants=true})
     round(c,12)
     make("UIStroke",c,{Color=themes[1][2],Transparency=.8})
     return c
 end
-local banner=card(0,112,Color3.fromRGB(65,24,55))
-local bannerBackdrop=make("ImageLabel",banner,{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,
-    ScaleType=Enum.ScaleType.Crop,ImageColor3=Color3.fromRGB(112,64,93),Image=""})
+local banner=card(0,181,Color3.fromRGB(65,24,55))
 local bannerImage=make("ImageLabel",banner,{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,
     ScaleType=Enum.ScaleType.Fit,Image="",ZIndex=2})
-local bannerNotice=text(banner,"Loading Sakura artwork…",14,42,480,26,12,Color3.fromRGB(255,222,242))
+round(bannerImage,12)
+local bannerNotice=text(banner,"Loading Sakura artwork…",14,77,480,26,12,Color3.fromRGB(255,222,242))
 local profile=card(122,84)
 local avatar=make("ImageLabel",profile,{Position=UDim2.fromOffset(14,12),Size=UDim2.fromOffset(60,60),
     BackgroundColor3=Color3.fromRGB(78,31,66),Image=""})
@@ -123,11 +122,11 @@ local function label(value,y,h)
     l.TextTruncate=Enum.TextTruncate.None
     return l
 end
-label("FARMING",306)
-local picker=button(body,"Select game tap button  ›",UDim2.fromOffset(0,334),UDim2.new(1,-6,0,38))
-local toggle=button(body,"Auto Tap   •   OFF",UDim2.fromOffset(0,382),UDim2.new(.65,-6,0,38))
-local speed=button(body,"0.4s / tap",UDim2.new(.65,4,0,382),UDim2.new(.35,-10,0,38))
-label("APPEARANCE",436)
+label("FARMING",375)
+local picker=button(body,"Select game tap button  ›",UDim2.fromOffset(0,403),UDim2.new(1,-6,0,38))
+local toggle=button(body,"Auto Tap   •   OFF",UDim2.fromOffset(0,451),UDim2.new(.65,-6,0,38))
+local speed=button(body,"0.4s / tap",UDim2.new(.65,4,0,451),UDim2.new(.35,-10,0,38))
+label("APPEARANCE",505)
 local function setTheme(i)
     themeIndex=i
     local t=themes[i]
@@ -140,15 +139,15 @@ end
 local refreshThemeDropdown
 for i,t in ipairs(themes) do
     local index=i
-    local b=button(body,t[1],UDim2.new((i-1)*.25,0,0,464),UDim2.new(.25,-6,0,34))
+    local b=button(body,t[1],UDim2.new((i-1)*.25,0,0,533),UDim2.new(.25,-6,0,34))
     b.TextColor3=t[2]
     connect(b.Activated,function()
         setTheme(index)
         if refreshThemeDropdown then refreshThemeDropdown() end
     end)
 end
-local status=label("Ready • select the game's tap button first.",512,48)
-label("Right Shift: hide/show  •  drag the top bar to move",580,24)
+local status=label("Ready • select the game's tap button first.",581,48)
+label("Right Shift: hide/show  •  drag the top bar to move",649,24)
 local menu=make("ScrollingFrame",window,{Visible=false,Position=UDim2.fromOffset(156,136),
     Size=UDim2.new(1,-176,0,240),BackgroundColor3=Color3.fromRGB(49,19,43),BorderSizePixel=0,
     ScrollBarThickness=4,AutomaticCanvasSize=Enum.AutomaticSize.Y,CanvasSize=UDim2.new(),ZIndex=5})
@@ -167,15 +166,14 @@ task.spawn(function()
         if type(override)=="string" and override~="" then return override end
         local register=getcustomasset or getsynasset
         assert(type(register)=="function" and type(writefile)=="function","Custom image support unavailable")
-        local path="Yozakura-SakuraKitsune-v1.jpg"
-        local bytes=game:HttpGet("https://raw.githubusercontent.com/koviescobar77-design/Yozakura/main/assets/sakura-kitsune-banner.jpg")
-        assert(bytes:sub(1,2)==string.char(255,216),"Invalid banner download")
+        local path="Yozakura-SakuraKitsuneMoonlight.jpg"
+        local bytes=game:HttpGet("https://raw.githubusercontent.com/koviescobar77-design/Yozakura/main/assets/sakura-kitsune-moonlight.jpg")
+        assert(bytes:sub(1,2)==string.char(255,285),"Invalid banner download")
         writefile(path,bytes)
         return register(path)
     end)
     if not alive then return end
     if ok then
-        bannerBackdrop.Image=result
         bannerImage.Image=result
         bannerNotice.Visible=false
     else bannerNotice.Text="Sakura image unavailable on this executor."
@@ -335,7 +333,7 @@ connect(close.Activated,function() showWindow(false) end)
 local started,attempts=os.clock(),0
 
 -- Working UI component examples; each control changes a real local setting.
-local controls=make("Frame",body,{Name="Controls",Position=UDim2.fromOffset(0,626),
+local controls=make("Frame",body,{Name="Controls",Position=UDim2.fromOffset(0,695),
     Size=UDim2.new(1,-6,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1})
 make("UIListLayout",controls,{Padding=UDim.new(0,12),SortOrder=Enum.SortOrder.LayoutOrder})
 make("UIPadding",controls,{PaddingBottom=UDim.new(0,20)})
@@ -456,7 +454,7 @@ dropdown("Multi-dropdown • select visible panels",
 
 local sliderRow=row("Slider • tap interval")
 local slider=make("Frame",sliderRow,{Size=UDim2.new(1,0,0,64),
-    BackgroundColor3=Color3.fromRGB(83,30,67),BorderSizePixel=0,LayoutOrder=1})
+    BackgroundColor3=Color3.fromRGB(92,34,61),BorderSizePixel=0,LayoutOrder=1})
 round(slider,10)
 local valueLabel=text(slider,"",14,2,490,24,14,white)
 local hit=button(slider,"",UDim2.fromOffset(14,27),UDim2.new(1,-28,0,32))
