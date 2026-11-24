@@ -125,9 +125,9 @@ task.spawn(function()
     if alive and ok then avatar.Image=result end
 end)
 local bannerFiles={
-    "nezuko-scene-flames.jpg",
-    "nezuko-scene-rain.jpg",
+    "nezuko-action-crimson.jpg",
     "nezuko-scene-rose-moon.jpg",
+    "nezuko-action-indigo.jpg",
 }
 local bannerRoot="https://raw.githubusercontent.com/koviescobar77-design/Yozakura/main/assets/"
 
