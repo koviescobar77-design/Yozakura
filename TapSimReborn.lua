@@ -129,6 +129,7 @@ local bannerFiles={
     "nezuko-action-crimson.jpg",
     "nezuko-scene-rose-moon.jpg",
     "nezuko-action-indigo.jpg",
+    "nezuko-scene-flames.jpg",
 }
 local bannerRoot="https://raw.githubusercontent.com/koviescobar77-design/Yozakura/main/assets/"
 
