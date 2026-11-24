@@ -54,31 +54,40 @@ local function text(parent,value,x,y,w,h,size,color)
         BackgroundTransparency=1,TextColor3=color or white,Font=Enum.Font.GothamMedium,TextSize=size or 14,
         TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd})
 end
--- Rounded display face, larger title and a native blossom sticker.
-local function blossom(parent,x,y,size)
-    local flower=make("Frame",parent,{Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(size,size),
-        BackgroundTransparency=1})
-    for i=0,4 do
-        local a=math.rad(i*72-90)
-        local petal=make("Frame",flower,{AnchorPoint=Vector2.new(.5,.5),
-            Position=UDim2.fromScale(.5+math.cos(a)*.25,.5+math.sin(a)*.25),
-            Size=UDim2.fromScale(.46,.46),BackgroundColor3=Color3.fromRGB(234,132,175),BorderSizePixel=0,
-            Rotation=i*72})
-        round(petal,size)
+-- Native fox sticker, shared by the header and restore button.
+local function foxSticker(parent,x,y,size)
+    local fox=make("Frame",parent,{Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(size,size),
+        BackgroundTransparency=1,ZIndex=parent.ZIndex+1})
+    local rose=Color3.fromRGB(244,117,170)
+    local blush=Color3.fromRGB(255,200,220)
+    local plum=Color3.fromRGB(62,22,47)
+    local function shape(xPos,yPos,width,height,color,rotation,radius)
+        local part=make("Frame",fox,{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(xPos,yPos),
+            Size=UDim2.fromScale(width,height),BackgroundColor3=color,BorderSizePixel=0,
+            Rotation=rotation or 0,ZIndex=fox.ZIndex})
+        round(part,radius)
     end
-    local center=make("Frame",flower,{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),
-        Size=UDim2.fromScale(.22,.22),BackgroundColor3=Color3.fromRGB(249,195,142),BorderSizePixel=0})
-    round(center,size)
-    return flower
+    shape(.25,.28,.36,.36,rose,29,3)
+    shape(.75,.28,.36,.36,rose,-29,3)
+    shape(.24,.26,.18,.18,blush,29,2)
+    shape(.76,.26,.18,.18,blush,-29,2)
+    shape(.5,.58,.91,.62,rose,0,size)
+    shape(.5,.73,.61,.32,Color3.fromRGB(255,228,238),0,size)
+    shape(.32,.57,.075,.115,plum,-12,size)
+    shape(.68,.57,.075,.115,plum,12,size)
+    shape(.5,.70,.10,.075,plum,0,size)
+    return fox
 end
-local headerFlower=blossom(top,9,23,27)
-local brand=text(top,"Sakura",39,14,101,42,32,themes[1][2])
-brand.Font=Enum.Font.FredokaOne
+local headerFox=foxSticker(top,9,19,32)
+local brand=text(top,"Sakura",45,12,91,46,32,Color3.new(1,1,1))
+brand.Font=Enum.Font.Antique
 brand.TextXAlignment=Enum.TextXAlignment.Center
 brand.TextYAlignment=Enum.TextYAlignment.Center
 brand.TextTruncate=Enum.TextTruncate.None
 brand.TextScaled=true
-make("UITextSizeConstraint",brand,{MinTextSize=24,MaxTextSize=32})
+make("UITextSizeConstraint",brand,{MinTextSize=18,MaxTextSize=32})
+local gold=Color3.fromRGB(255,219,177)
+local wordmark=make("UIGradient",brand,{Rotation=85,Color=ColorSequence.new(gold,themes[1][2])})
 local homeTitle=text(top,"Kitsune Moonlight",156,8,380,30,25,white)
 homeTitle.Font=Enum.Font.Antique
 text(top,"Tap Sim Reborn  /  Session overview",157,42,380,20,13,Color3.fromRGB(239,193,151))
@@ -132,7 +141,7 @@ local function setTheme(i)
     local t=themes[i]
     gradient.Color=ColorSequence.new(t[2],t[3])
     border.Color=t[2]
-    brand.TextColor3=t[2]
+    wordmark.Color=ColorSequence.new(gold,t[2])
     body.ScrollBarImageColor3=t[2]
     toggle.TextColor3=running and t[2] or white
 end
@@ -273,7 +282,7 @@ local restore=make("TextButton",gui,{Name="SakuraRestore",Visible=false,Text="",
     AutoButtonColor=true,ZIndex=20})
 round(restore,29)
 make("UIStroke",restore,{Color=themes[1][2],Thickness=2,Transparency=.15})
-blossom(restore,10,10,38)
+foxSticker(restore,10,10,38)
 local function showWindow(show)
     window.Visible=show
     restore.Visible=not show
@@ -363,7 +372,7 @@ end)
 local switchRow=row("Toggle")
 local switch=button(switchRow,"",UDim2.new(),UDim2.new(1,0,0,42))
 switch.LayoutOrder=1
-local switchLabel=text(switch,"Flower sticker",14,0,360,42,14,white)
+local switchLabel=text(switch,"Fox sticker",14,0,360,42,14,white)
 local track=make("Frame",switch,{Position=UDim2.new(1,-66,.5,-12),Size=UDim2.fromOffset(52,24),
     BackgroundColor3=themes[1][2],BorderSizePixel=0})
 round(track,12)
@@ -371,13 +380,13 @@ local knob=make("Frame",track,{Position=UDim2.fromOffset(30,3),Size=UDim2.fromOf
     BackgroundColor3=Color3.fromRGB(255,231,245),BorderSizePixel=0})
 round(knob,9)
 local function refreshSwitch()
-    local on=headerFlower.Visible
-    switchLabel.Text="Flower sticker  •  "..(on and "ON" or "OFF")
+    local on=headerFox.Visible
+    switchLabel.Text="Fox sticker  •  "..(on and "ON" or "OFF")
     track.BackgroundColor3=on and themes[themeIndex][2] or Color3.fromRGB(111,77,102)
     knob.Position=UDim2.fromOffset(on and 30 or 4,3)
 end
 connect(switch.Activated,function()
-    headerFlower.Visible=not headerFlower.Visible
+    headerFox.Visible=not headerFox.Visible
     refreshSwitch()
 end)
 refreshSwitch()
