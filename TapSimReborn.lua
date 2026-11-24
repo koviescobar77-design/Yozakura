@@ -37,9 +37,6 @@ local window=make("Frame",gui,{Size=UDim2.fromOffset(720,560),Position=UDim2.fro
 round(window,16)
 local scale=make("UIScale",window,{Scale=1})
 local border=make("UIStroke",window,{Color=accent,Transparency=.6})
-local rail=make("Frame",window,{Name="ReservedSidebar",Position=UDim2.fromOffset(0,70),
-    Size=UDim2.new(0,140,1,-70),BackgroundColor3=Color3.fromRGB(39,16,32),BorderSizePixel=0})
--- Intentionally no menu labels, menu icons, or placeholder actions.
 local top=make("Frame",window,{Size=UDim2.new(1,0,0,70),BackgroundColor3=Color3.fromRGB(58,22,42),BorderSizePixel=0,Active=true})
 local gradient=make("UIGradient",top,{Color=ColorSequence.new(accent,accentShade),Transparency=NumberSequence.new(.78)})
 local function text(parent,value,x,y,w,h,size,color)
@@ -47,32 +44,21 @@ local function text(parent,value,x,y,w,h,size,color)
         BackgroundTransparency=1,TextColor3=color or white,Font=Enum.Font.GothamMedium,TextSize=size or 14,
         TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd})
 end
--- Native fox sticker, shared by the header and restore button.
-local function foxSticker(parent,x,y,size)
-    local fox=make("Frame",parent,{Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(size,size),
-        BackgroundTransparency=1,ZIndex=parent.ZIndex+1})
-    local rose=Color3.fromRGB(244,117,170)
-    local blush=Color3.fromRGB(255,200,220)
-    local plum=Color3.fromRGB(62,22,47)
-    local function shape(xPos,yPos,width,height,color,rotation,radius)
-        local part=make("Frame",fox,{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(xPos,yPos),
-            Size=UDim2.fromScale(width,height),BackgroundColor3=color,BorderSizePixel=0,
-            Rotation=rotation or 0,ZIndex=fox.ZIndex})
-        round(part,radius)
-    end
-    shape(.25,.28,.36,.36,rose,29,3)
-    shape(.75,.28,.36,.36,rose,-29,3)
-    shape(.24,.26,.18,.18,blush,29,2)
-    shape(.76,.26,.18,.18,blush,-29,2)
-    shape(.5,.58,.91,.62,rose,0,size)
-    shape(.5,.73,.61,.32,Color3.fromRGB(255,228,238),0,size)
-    shape(.32,.57,.075,.115,plum,-12,size)
-    shape(.68,.57,.075,.115,plum,12,size)
-    shape(.5,.70,.10,.075,plum,0,size)
-    return fox
+local stickerImages={}
+local function circuitSticker(parent,x,y,size)
+    local tile=make("Frame",parent,{Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(size,size),
+        BackgroundColor3=Color3.fromRGB(27,23,40),BorderSizePixel=0,ZIndex=parent.ZIndex+1})
+    round(tile,9)
+    local fallback=text(tile,"✿",0,0,size,size,23,accent)
+    fallback.TextXAlignment=Enum.TextXAlignment.Center
+    fallback.ZIndex=tile.ZIndex
+    local icon=make("ImageLabel",tile,{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,
+        ScaleType=Enum.ScaleType.Crop,ZIndex=tile.ZIndex+1})
+    round(icon,9)
+    table.insert(stickerImages,icon)
 end
-foxSticker(top,9,19,32)
-local brand=text(top,"Sakura",45,12,91,46,32,Color3.new(1,1,1))
+circuitSticker(top,16,13,44)
+local brand=text(top,"Sakura",66,12,112,46,32,Color3.new(1,1,1))
 brand.Font=Enum.Font.Antique
 brand.TextXAlignment=Enum.TextXAlignment.Center
 brand.TextYAlignment=Enum.TextYAlignment.Center
@@ -81,9 +67,9 @@ brand.TextScaled=true
 make("UITextSizeConstraint",brand,{MinTextSize=18,MaxTextSize=32})
 local gold=Color3.fromRGB(255,219,177)
 make("UIGradient",brand,{Rotation=85,Color=ColorSequence.new(gold,accent)})
-local homeTitle=text(top,"Nezuko Moonlight",156,8,380,30,25,white)
+local homeTitle=text(top,"Nezuko Moonlight",200,8,390,30,25,white)
 homeTitle.Font=Enum.Font.Antique
-text(top,"Tap Sim Reborn  /  Session overview",157,42,380,20,13,Color3.fromRGB(239,193,151))
+text(top,"Tap Sim Reborn  /  Session overview",201,42,390,20,13,Color3.fromRGB(239,193,151))
 local function button(parent,value,pos,size)
     local b=make("TextButton",parent,{Text=value,Position=pos,Size=size,BackgroundColor3=Color3.fromRGB(92,34,61),
         TextColor3=white,Font=Enum.Font.GothamMedium,TextSize=14,BorderSizePixel=0})
@@ -92,32 +78,43 @@ local function button(parent,value,pos,size)
 end
 local minimize=button(top,"–",UDim2.new(1,-76,0,14),UDim2.fromOffset(28,28))
 local close=button(top,"×",UDim2.new(1,-40,0,14),UDim2.fromOffset(28,28))
-local body=make("ScrollingFrame",window,{Position=UDim2.fromOffset(156,80),Size=UDim2.new(1,-170,1,-92),
+local body=make("ScrollingFrame",window,{Position=UDim2.fromOffset(20,88),Size=UDim2.new(1,-40,1,-104),
     BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=3,ScrollBarImageColor3=accent,
     CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y})
-local function card(y,h,color)
-    local c=make("Frame",body,{Position=UDim2.fromOffset(0,y),Size=UDim2.new(1,-6,0,h),
-        BackgroundColor3=color or Color3.fromRGB(53,22,41),BorderSizePixel=0,ClipsDescendants=true})
-    round(c,12)
-    make("UIStroke",c,{Color=accent,Transparency=.8})
-    return c
+local function card(x,y,w,h,color)
+    local panel=make("Frame",body,{Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(w,h),
+        BackgroundColor3=color or Color3.fromRGB(43,23,43),BorderSizePixel=0,ClipsDescendants=true})
+    round(panel,14)
+    make("UIStroke",panel,{Color=accent,Transparency=.72})
+    return panel
 end
-local banner=card(0,181,Color3.fromRGB(65,24,55))
+local function trace(parent,x,y,len)
+    make("Frame",parent,{Position=UDim2.fromOffset(x,y),Size=UDim2.fromOffset(len,1),
+        BackgroundColor3=accent,BackgroundTransparency=.42,BorderSizePixel=0})
+    local node=make("Frame",parent,{Position=UDim2.fromOffset(x+len,y-2),Size=UDim2.fromOffset(5,5),
+        BackgroundColor3=accent,BorderSizePixel=0})
+    round(node,3)
+end
+trace(top,20,69,188)
+trace(top,221,69,477)
+local banner=card(1,1,676,225,Color3.fromRGB(65,24,55))
 local bannerImage=make("ImageLabel",banner,{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,
     ScaleType=Enum.ScaleType.Fit,Image="",ZIndex=2})
 round(bannerImage,12)
-local bannerNotice=text(banner,"Loading Sakura artwork…",14,77,480,26,12,Color3.fromRGB(255,222,242))
-local profile=card(191,84)
-local avatar=make("ImageLabel",profile,{Position=UDim2.fromOffset(14,12),Size=UDim2.fromOffset(60,60),
+local bannerNotice=text(banner,"Loading Sakura artwork…",20,98,480,26,12,Color3.fromRGB(255,222,242))
+local profile=card(1,243,395,112)
+local avatar=make("ImageLabel",profile,{Position=UDim2.fromOffset(18,26),Size=UDim2.fromOffset(60,60),
     BackgroundColor3=Color3.fromRGB(78,31,66),Image=""})
 round(avatar,30)
 make("UIStroke",avatar,{Color=accent,Thickness=2})
-text(profile,player.DisplayName,90,12,300,25,18,white)
-text(profile,"@"..player.Name,90,39,300,18,13,muted)
-text(profile,"TAP SIM REBORN",90,60,300,17,12,accent)
-local session=card(285,76)
-text(session,"✿  SESSION",14,7,450,22,14,accent)
-local stats=text(session,"Session: 0s",14,37,490,25,14,white)
+text(profile,player.DisplayName,94,22,280,25,18,white)
+text(profile,"@"..player.Name,94,49,280,18,13,muted)
+text(profile,"TAP SIM REBORN",94,74,280,17,12,accent)
+trace(profile,18,99,155)
+local session=card(411,243,266,112)
+text(session,"SESSION",16,10,230,22,14,accent)
+trace(session,16,101,227)
+local stats=text(session,"00:00",16,31,230,37,24,white)
 task.spawn(function()
     local ok,result=pcall(function()
         return Players:GetUserThumbnailAsync(player.UserId,Enum.ThumbnailType.HeadShot,Enum.ThumbnailSize.Size150x150)
@@ -193,7 +190,21 @@ local restore=make("TextButton",gui,{Name="SakuraRestore",Visible=false,Text="",
     AutoButtonColor=true,ZIndex=20})
 round(restore,29)
 make("UIStroke",restore,{Color=accent,Thickness=2,Transparency=.15})
-foxSticker(restore,10,10,38)
+circuitSticker(restore,8,8,42)
+task.spawn(function()
+    local register=getcustomasset or getsynasset
+    if type(register)~="function" or type(writefile)~="function" then return end
+    local ok,asset=pcall(function()
+        local filename="Sakura-Circuit-Sticker-v1.jpg"
+        local bytes=game:HttpGet(bannerRoot.."sakura-circuit-sticker.jpg")
+        assert(bytes:sub(1,2)==string.char(255,216),"Invalid sticker JPEG")
+        writefile(filename,bytes)
+        return register(filename)
+    end)
+    if alive and ok and type(asset)=="string" and asset~="" then
+        for _,icon in ipairs(stickerImages) do icon.Image=asset end
+    end
+end)
 local function showWindow(show)
     window.Visible=show
     restore.Visible=not show
@@ -203,7 +214,6 @@ local mini=false
 connect(minimize.Activated,function()
     mini=not mini
     body.Visible=not mini
-    rail.Visible=not mini
     window.Size=UDim2.fromOffset(720,mini and 70 or 560)
     minimize.Text=mini and "+" or "–"
 end)
@@ -250,9 +260,10 @@ end)
 connect(close.Activated,function() showWindow(false) end)
 local started=os.clock()
 local function refreshSession()
-    stats.Text=string.format("Session: %ds",math.floor(os.clock()-started))
+    local elapsed=math.floor(os.clock()-started)
+    stats.Text=string.format("%02d:%02d",math.floor(elapsed/60),elapsed%60)
 end
-local reset=button(body,"Reset session counter",UDim2.fromOffset(0,371),UDim2.new(1,-6,0,38))
+local reset=button(session,"Reset timer",UDim2.fromOffset(16,70),UDim2.fromOffset(234,25))
 connect(reset.Activated,function()
     started=os.clock()
     refreshSession()
