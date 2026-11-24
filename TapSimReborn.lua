@@ -88,7 +88,6 @@ local body=make("ScrollingFrame",window,{Position=UDim2.fromOffset(156,80),Size=
 local function card(y,h,color)
     local c=make("Frame",body,{Position=UDim2.fromOffset(0,y),Size=UDim2.new(1,-6,0,h),
         BackgroundColor3=color or Color3.fromRGB(59,30,52),BackgroundTransparency=.24,BorderSizePixel=0,ClipsDescendants=true})
-    round(c,12)
     make("UIStroke",c,{Color=Color3.fromRGB(255,205,227),Transparency=.65})
     local sheen=make("Frame",c,{Position=UDim2.fromOffset(12,1),Size=UDim2.new(1,-24,0,2),
         BackgroundColor3=Color3.fromRGB(255,205,227),BorderSizePixel=0})
@@ -99,7 +98,6 @@ end
 local banner=card(0,181,Color3.fromRGB(65,24,55))
 local bannerImage=make("ImageLabel",banner,{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,
     ScaleType=Enum.ScaleType.Fit,Image="",ZIndex=2})
-round(bannerImage,12)
 local bannerNotice=text(banner,"Loading Sakura artwork…",14,77,480,26,12,Color3.fromRGB(255,222,242))
 local profile=card(191,84)
 local avatar=make("ImageLabel",profile,{Position=UDim2.fromOffset(14,12),Size=UDim2.fromOffset(60,60),
