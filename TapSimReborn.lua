@@ -156,6 +156,42 @@ local function getArtwork(name)
     return uri
 end
 task.spawn(function()
+    if lite then
+        local artwork={}
+        local index=0
+        local function nextBanner()
+            for _=1,#bannerFiles do
+                index=index%#bannerFiles+1
+                if artwork[index]==nil then
+                    local ok,asset=pcall(getArtwork,bannerFiles[index])
+                    artwork[index]=ok and asset or false
+                end
+                if not alive then return false end
+                if artwork[index] then
+                    bannerImage.Image=artwork[index]
+                    bannerNotice.Visible=false
+                    return true
+                end
+            end
+            return false
+        end
+        if not nextBanner() then
+            if not alive then return end
+            local fallback=env.YozakuraSakuraBannerAsset
+            if type(fallback)=="string" and fallback~="" then
+                bannerImage.Image=fallback
+                bannerNotice.Visible=false
+            else
+                bannerNotice.Text="Nezuko artwork could not load."
+            end
+            return
+        end
+        while alive do
+            task.wait(5)
+            if alive and window.Visible and body.Visible then nextBanner() end
+        end
+        return
+    end
     local ready={}
     for _,name in ipairs(bannerFiles) do
         if not alive then return end
@@ -166,7 +202,6 @@ task.spawn(function()
             if #ready==1 then
                 bannerImage.Image=asset
                 bannerNotice.Visible=false
-                if lite then return end
             end
         end
     end
