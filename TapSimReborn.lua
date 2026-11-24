@@ -125,41 +125,45 @@ local bannerFiles={
 }
 local bannerRoot="https://raw.githubusercontent.com/koviescobar77-design/Yozakura/main/assets/"
 
+local env=type(getgenv)=="function" and getgenv() or _G
+local lite=env.SakuraLite==true
+local function getArtwork(name)
+    local register=getcustomasset or getsynasset
+    assert(type(register)=="function","Custom images unavailable")
+    local path="Sakura-"..name
+    if type(isfile)=="function" and type(readfile)=="function" then
+        local ok,uri=pcall(function()
+            if not isfile(path) then return end
+            local bytes=readfile(path)
+            if bytes:sub(1,2)==string.char(255,216) and bytes:sub(-2)==string.char(255,217) then
+                return register(path)
+            end
+        end)
+        if ok and type(uri)=="string" and uri~="" then return uri end
+    end
+    local bytes=game:HttpGet(bannerRoot..name)
+    assert(bytes:sub(1,2)==string.char(255,216) and bytes:sub(-2)==string.char(255,217),"Invalid JPEG")
+    writefile(path,bytes)
+    local uri=register(path)
+    assert(type(uri)=="string" and uri~="","Empty asset URI")
+    return uri
+end
 task.spawn(function()
     local ready={}
-    local register=getcustomasset or getsynasset
-    local provider=game:GetService("ContentProvider")
-    local preloadTargets={}
-    if type(register)=="function" and type(writefile)=="function" then
-        for _,name in ipairs(bannerFiles) do
-            if not alive then return end
-            local ok,asset=pcall(function()
-                local bytes=game:HttpGet(bannerRoot..name)
-                assert(bytes:sub(1,2)==string.char(255,216),"Invalid JPEG")
-                local path="Sakura-"..name
-                writefile(path,bytes)
-                local uri=register(path)
-                assert(type(uri)=="string" and uri~="","Empty asset URI")
-                return uri
-            end)
-            if not alive then return end
-            if ok then
-                table.insert(ready,asset)
-                local preloadImage=Instance.new("ImageLabel")
-                preloadImage.Image=asset
-                table.insert(preloadTargets,preloadImage)
-                if #ready==1 then
-                    bannerImage.Image=asset
-                    bannerNotice.Visible=false
-                end
-            else
-                warn("[Sakura banner] "..name..": "..tostring(asset))
+    for _,name in ipairs(bannerFiles) do
+        if not alive then return end
+        local ok,asset=pcall(getArtwork,name)
+        if not alive then return end
+        if ok then
+            table.insert(ready,asset)
+            if #ready==1 then
+                bannerImage.Image=asset
+                bannerNotice.Visible=false
+                if lite then return end
             end
         end
     end
-    if not alive then return end
     if #ready==0 then
-        local env=type(getgenv)=="function" and getgenv() or _G
         local fallback=env.YozakuraSakuraBannerAsset
         if type(fallback)=="string" and fallback~="" then
             bannerImage.Image=fallback
@@ -169,15 +173,14 @@ task.spawn(function()
         end
         return
     end
-    pcall(function() provider:PreloadAsync(preloadTargets) end)
-    for _,target in ipairs(preloadTargets) do target:Destroy() end
-    if not alive or #ready<2 then return end
+    if #ready<2 then return end
     local index=1
     while alive do
         task.wait(5)
-        if not alive then break end
-        index=index%#ready+1
-        bannerImage.Image=ready[index]
+        if alive and window.Visible and body.Visible then
+            index=index%#ready+1
+            bannerImage.Image=ready[index]
+        end
     end
 end)
 -- Kept outside the window so hiding the panel leaves a restore button.
@@ -189,16 +192,8 @@ round(restore,29)
 make("UIStroke",restore,{Color=accent,Thickness=2,Transparency=.15})
 circuitSticker(restore,8,8,42)
 task.spawn(function()
-    local register=getcustomasset or getsynasset
-    if type(register)~="function" or type(writefile)~="function" then return end
-    local ok,asset=pcall(function()
-        local filename="Sakura-Circuit-Sticker-v1.jpg"
-        local bytes=game:HttpGet(bannerRoot.."sakura-circuit-sticker.jpg")
-        assert(bytes:sub(1,2)==string.char(255,216),"Invalid sticker JPEG")
-        writefile(filename,bytes)
-        return register(filename)
-    end)
-    if alive and ok and type(asset)=="string" and asset~="" then
+    local ok,asset=pcall(getArtwork,"sakura-circuit-sticker.jpg")
+    if alive and ok then
         for _,icon in ipairs(stickerImages) do icon.Image=asset end
     end
 end)
@@ -241,18 +236,18 @@ local function resize()
         scale.Scale=math.max(0.1, math.min((v.X-24)/720,(v.Y-40)/560,1))
     end
 end
-local lastCamera
 local viewportConnection
-connect(game:GetService("RunService").Heartbeat,function()
-    if workspace.CurrentCamera~=lastCamera then
-        if viewportConnection then viewportConnection:Disconnect() end
-        lastCamera=workspace.CurrentCamera
-        if lastCamera then viewportConnection=connect(lastCamera:GetPropertyChangedSignal("ViewportSize"),resize) end
-        resize()
-    end
-end)
+local function watchCamera()
+    if viewportConnection then viewportConnection:Disconnect() end
+    local camera=workspace.CurrentCamera
+    viewportConnection=camera and camera:GetPropertyChangedSignal("ViewportSize"):Connect(resize)
+    resize()
+end
+connect(workspace:GetPropertyChangedSignal("CurrentCamera"),watchCamera)
+watchCamera()
 connect(gui.Destroying,function()
     alive=false
+    if viewportConnection then viewportConnection:Disconnect() end
     for _,c in ipairs(connections) do c:Disconnect() end
 end)
 connect(close.Activated,function() showWindow(false) end)
@@ -267,7 +262,7 @@ connect(reset.Activated,function()
 end)
 task.spawn(function()
     while alive do
-        refreshSession()
+        if window.Visible and body.Visible then refreshSession() end
         task.wait(1)
     end
 end)
