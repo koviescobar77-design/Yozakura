@@ -81,7 +81,7 @@ brand.TextScaled=true
 make("UITextSizeConstraint",brand,{MinTextSize=18,MaxTextSize=32})
 local gold=Color3.fromRGB(255,219,177)
 make("UIGradient",brand,{Rotation=85,Color=ColorSequence.new(gold,accent)})
-local homeTitle=text(top,"Kitsune Moonlight",156,8,380,30,25,white)
+local homeTitle=text(top,"Nezuko Moonlight",156,8,380,30,25,white)
 homeTitle.Font=Enum.Font.Antique
 text(top,"Tap Sim Reborn  /  Session overview",157,42,380,20,13,Color3.fromRGB(239,193,151))
 local function button(parent,value,pos,size)
@@ -124,25 +124,67 @@ task.spawn(function()
     end)
     if alive and ok then avatar.Image=result end
 end)
+local bannerFiles={
+    "nezuko-crimson-shrine.jpg",
+    "nezuko-indigo-rooftop.jpg",
+    "nezuko-snow-garden.jpg",
+}
+local bannerRoot="https://raw.githubusercontent.com/koviescobar77-design/Yozakura/main/assets/"
+
 task.spawn(function()
-    local env=type(getgenv)=="function" and getgenv() or _G
-    local override=env.YozakuraSakuraBannerAsset
-    local ok,result=pcall(function()
-        if type(override)=="string" and override~="" then return override end
-        local register=getcustomasset or getsynasset
-        assert(type(register)=="function" and type(writefile)=="function","Custom image support unavailable")
-        local path="Yozakura-SakuraKitsuneMoonlight.jpg"
-        local bytes=game:HttpGet("https://raw.githubusercontent.com/koviescobar77-design/Yozakura/ab063c29bcd9f41b647cb29ef307892379deb331/assets/sakura-kitsune-moonlight.jpg")
-        assert(bytes:sub(1,2)==string.char(255,216),"Invalid banner download")
-        writefile(path,bytes)
-        return register(path)
-    end)
+    local ready={}
+    local register=getcustomasset or getsynasset
+    local provider=game:GetService("ContentProvider")
+    local preloadTargets={}
+    if type(register)=="function" and type(writefile)=="function" then
+        for _,name in ipairs(bannerFiles) do
+            if not alive then return end
+            local ok,asset=pcall(function()
+                local bytes=game:HttpGet(bannerRoot..name)
+                assert(bytes:sub(1,2)==string.char(255,216),"Invalid JPEG")
+                local path="Sakura-"..name
+                writefile(path,bytes)
+                local uri=register(path)
+                assert(type(uri)=="string" and uri~="","Empty asset URI")
+                return uri
+            end)
+            if not alive then return end
+            if ok then
+                table.insert(ready,asset)
+                local preloadImage=Instance.new("ImageLabel")
+                preloadImage.Image=asset
+                table.insert(preloadTargets,preloadImage)
+                if #ready==1 then
+                    bannerImage.Image=asset
+                    bannerNotice.Visible=false
+                end
+            else
+                warn("[Sakura banner] "..name..": "..tostring(asset))
+            end
+        end
+    end
     if not alive then return end
-    if ok then
-        bannerImage.Image=result
-        bannerNotice.Visible=false
-    else bannerNotice.Text="Sakura image unavailable on this executor."
-        warn("[Sakura banner] "..tostring(result)) end
+    if #ready==0 then
+        local env=type(getgenv)=="function" and getgenv() or _G
+        local fallback=env.YozakuraSakuraBannerAsset
+        if type(fallback)=="string" and fallback~="" then
+            bannerImage.Image=fallback
+            bannerNotice.Visible=false
+        else
+            bannerNotice.Text="Nezuko artwork could not load."
+        end
+        return
+    end
+    pcall(function() provider:PreloadAsync(preloadTargets) end)
+    for _,target in ipairs(preloadTargets) do target:Destroy() end
+    if not alive or #ready<2 then return end
+    local index=1
+    while alive do
+        task.wait(5)
+        if not alive then break end
+        index=index%#ready+1
+        bannerImage.Image=ready[index]
+    end
 end)
 -- Kept outside the window so hiding the panel leaves a restore button.
 local restore=make("TextButton",gui,{Name="SakuraRestore",Visible=false,Text="",
